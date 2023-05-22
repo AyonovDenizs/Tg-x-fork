@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -285,7 +285,7 @@ public abstract class TelegramViewController<T> extends ViewController<T> {
             case R.id.btn_markChatAsUnread:
             case R.id.btn_removeChatFromListOrClearHistory:
             case R.id.btn_removePsaChatFromList: {
-              tdlib.ui().processChatAction(TelegramViewController.this, chat.getList(), chat.getChatId(), chat.getMessageThread(), actionId, null);
+              tdlib.ui().processChatAction(TelegramViewController.this, chat.getList(), chat.getChatId(), chat.getMessageThread(), new TdApi.MessageSourceSearch(), actionId, null);
               break;
             }
             case R.id.btn_selectChat: {
@@ -386,7 +386,8 @@ public abstract class TelegramViewController<T> extends ViewController<T> {
           TGFoundMessage message = (TGFoundMessage) listItem.getData();
           TdApi.Message rawMessage = message.getMessage();
           preventLeavingSearchMode();
-          tdlib.ui().openChat(TelegramViewController.this, rawMessage.chatId, new TdlibUi.ChatOpenParameters().highlightMessage(rawMessage).keepStack());
+          String query = getLastSearchInput();
+          tdlib.ui().openChat(TelegramViewController.this, rawMessage.chatId, new TdlibUi.ChatOpenParameters().foundMessage(query, rawMessage).keepStack());
           break;
         }
       }

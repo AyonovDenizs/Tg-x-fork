@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -598,10 +598,10 @@ public class PageBlockMedia extends PageBlock implements MediaWrapper.OnClickLis
   }
 
   @Override
-  public MediaViewThumbLocation getTargetLocation (int index, MediaItem item) {
+  public MediaViewThumbLocation getTargetLocation (int indexInStack, MediaItem item) {
     MediaWrapper wrapper;
     if (isList || collageContext != null) {
-      wrapper = getWrapper(index);
+      wrapper = getWrapper(indexInStack);
     } else {
       wrapper = this.wrapper;
     }

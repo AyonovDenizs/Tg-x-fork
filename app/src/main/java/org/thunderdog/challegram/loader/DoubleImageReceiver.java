@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -50,7 +50,7 @@ public class DoubleImageReceiver implements Receiver {
   }
 
   @Override
-  public void setRadius (int radius) {
+  public void setRadius (float radius) {
     if (isAnimated)
       throw new UnsupportedOperationException();
     this.preview.setRadius(radius);
@@ -200,7 +200,7 @@ public class DoubleImageReceiver implements Receiver {
     return receiver.getLeft();
   }
 
-  public int getRadius () {
+  public float getRadius () {
     return isAnimated ? 0 : getImageReceiver().getRadius();
   }
 

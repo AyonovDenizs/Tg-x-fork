@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -61,9 +61,12 @@ public class TdlibListeners {
   final ReferenceLongMap<MessageListener> messageChatListeners;
   final ReferenceLongMap<MessageEditListener> messageEditChatListeners;
   final ReferenceLongMap<ChatListener> specificChatListeners;
+  final ReferenceMap<String, ForumTopicInfoListener> specificForumTopicListeners;
   final ReferenceLongMap<NotificationSettingsListener> chatSettingsListeners;
   final ReferenceIntMap<FileUpdateListener> fileUpdateListeners;
   final ReferenceLongMap<PollListener> pollListeners;
+
+  final ReferenceMap<String, ReactionLoadListener> reactionLoadListeners;
 
   final Map<String, List<TdApi.Message>> pendingMessages = new HashMap<>();
 
@@ -91,9 +94,12 @@ public class TdlibListeners {
 
     this.animatedEmojiListeners = new ReferenceList<>(true);
 
+    this.reactionLoadListeners = new ReferenceMap<>(true);
+
     this.messageChatListeners = new ReferenceLongMap<>();
     this.messageEditChatListeners = new ReferenceLongMap<>();
     this.specificChatListeners = new ReferenceLongMap<>();
+    this.specificForumTopicListeners = new ReferenceMap<>(true);
     this.chatSettingsListeners = new ReferenceLongMap<>(true);
     this.fileUpdateListeners = new ReferenceIntMap<>();
     this.pollListeners = new ReferenceLongMap<>();
@@ -375,6 +381,16 @@ public class TdlibListeners {
   }
 
   @AnyThread
+  public void subscribeToForumTopicUpdates (long chatId, long messageThreadId, ForumTopicInfoListener listener) {
+    specificForumTopicListeners.add(chatId + "_" + messageThreadId, listener);
+  }
+
+  @AnyThread
+  public void unsubscribeFromForumTopicUpdates (long chatId, long messageThreadId, ForumTopicInfoListener listener) {
+    specificForumTopicListeners.remove(chatId + "_" + messageThreadId, listener);
+  }
+
+  @AnyThread
   public void subscribeToChatListUpdates (@NonNull TdApi.ChatList chatList, ChatListListener listener) {
     chatListListeners.add(TD.makeChatListKey(chatList), listener);
   }
@@ -382,6 +398,16 @@ public class TdlibListeners {
   @AnyThread
   public void unsubscribeFromChatListUpdates (@NonNull TdApi.ChatList chatList, ChatListListener listener) {
     chatListListeners.remove(TD.makeChatListKey(chatList), listener);
+  }
+
+  @AnyThread
+  public void addReactionLoadListener (String reactionKey, ReactionLoadListener listener) {
+    reactionLoadListeners.add(reactionKey, listener);
+  }
+
+  @AnyThread
+  public void removeReactionLoadListener (String reactionKey, ReactionLoadListener listener) {
+    reactionLoadListeners.remove(reactionKey, listener);
   }
 
   @AnyThread
@@ -745,6 +771,17 @@ public class TdlibListeners {
     }
   }
 
+  // getEmojiReaction + getCustomReaction
+
+  public void notifyReactionLoaded (String reactionKey) {
+    ReferenceList<ReactionLoadListener> list = reactionLoadListeners.removeAll(reactionKey);
+    if (list != null) {
+      for (ReactionLoadListener loadListener : list) {
+        loadListener.onReactionLoaded(reactionKey);
+      }
+    }
+  }
+
   // updateMessageInteractionInfo
 
   private static void updateMessageInteractionInfo (TdApi.UpdateMessageInteractionInfo update, @Nullable Iterator<MessageListener> list) {
@@ -1099,7 +1136,7 @@ public class TdlibListeners {
 
   // updateChatFilters
 
-  void updateChatFilters (TdApi.UpdateChatFilters update) {
+  void updateChatFilters (TdApi.UpdateChatFolders update) {
     // TODO?
   }
 
@@ -1191,7 +1228,7 @@ public class TdlibListeners {
 
   // updateMessageTtlSetting
 
-  private static void updateChatMessageTtlSetting (long chatId, int messageTtlSetting, @Nullable Iterator<ChatListener> list) {
+  private static void updateChatMessageAutoDeleteTime (long chatId, int messageTtlSetting, @Nullable Iterator<ChatListener> list) {
     if (list != null) {
       while (list.hasNext()) {
         list.next().onChatMessageTtlSettingChanged(chatId, messageTtlSetting);
@@ -1199,9 +1236,9 @@ public class TdlibListeners {
     }
   }
 
-  void updateChatMessageTtlSetting (TdApi.UpdateChatMessageTtl update) {
-    updateChatMessageTtlSetting(update.chatId, update.messageTtl, chatListeners.iterator());
-    updateChatMessageTtlSetting(update.chatId, update.messageTtl, specificChatListeners.iterator(update.chatId));
+  void updateChatMessageAutoDeleteTime (TdApi.UpdateChatMessageAutoDeleteTime update) {
+    updateChatMessageAutoDeleteTime(update.chatId, update.messageAutoDeleteTime, chatListeners.iterator());
+    updateChatMessageAutoDeleteTime(update.chatId, update.messageAutoDeleteTime, specificChatListeners.iterator(update.chatId));
   }
 
   // updateChatVoiceChat
@@ -1217,6 +1254,22 @@ public class TdlibListeners {
   void updateChatVideoChat (TdApi.UpdateChatVideoChat update) {
     updateChatVideoChat(update.chatId, update.videoChat, chatListeners.iterator());
     updateChatVideoChat(update.chatId, update.videoChat, specificChatListeners.iterator(update.chatId));
+  }
+
+  // updateForumTopicInfo
+
+  void updateForumTopicInfo (TdApi.UpdateForumTopicInfo update) {
+    updateForumTopicInfo(update.chatId, update.info, chatListeners.iterator());
+    updateForumTopicInfo(update.chatId, update.info, specificChatListeners.iterator(update.chatId));
+    updateForumTopicInfo(update.chatId, update.info, specificForumTopicListeners.iterator(update.chatId + "_" + update.info.messageThreadId));
+  }
+
+  private static void updateForumTopicInfo (long chatId, TdApi.ForumTopicInfo info, @Nullable Iterator<? extends ForumTopicInfoListener> list) {
+    if (list != null) {
+      while (list.hasNext()) {
+        list.next().onForumTopicInfoChanged(chatId, info);
+      }
+    }
   }
 
   // updateChatPendingJoinRequests
@@ -1261,6 +1314,36 @@ public class TdlibListeners {
   void updateChatIsMarkedAsUnread (TdApi.UpdateChatIsMarkedAsUnread update) {
     updateChatIsMarkedAsUnread(update.chatId, update.isMarkedAsUnread, chatListeners.iterator());
     updateChatIsMarkedAsUnread(update.chatId, update.isMarkedAsUnread, specificChatListeners.iterator(update.chatId));
+  }
+
+  // updateChatBackground
+
+  private static void updateChatBackground (long chatId, @Nullable TdApi.ChatBackground background, @Nullable Iterator<ChatListener> list) {
+    if (list != null) {
+      while (list.hasNext()) {
+        list.next().onChatBackgroundChanged(chatId, background);
+      }
+    }
+  }
+
+  void updateChatBackground (TdApi.UpdateChatBackground update) {
+    updateChatBackground(update.chatId, update.background, chatListeners.iterator());
+    updateChatBackground(update.chatId, update.background, specificChatListeners.iterator(update.chatId));
+  }
+
+  // updateChatIsTranslatable
+
+  private static void updateChatIsTranslatable (long chatId, boolean isTranslatable, @Nullable Iterator<ChatListener> list) {
+    if (list != null) {
+      while (list.hasNext()) {
+        list.next().onChatIsTranslatableChanged(chatId, isTranslatable);
+      }
+    }
+  }
+
+  void updateChatIsTranslatable (TdApi.UpdateChatIsTranslatable update) {
+    updateChatIsTranslatable(update.chatId, update.isTranslatable, chatListeners.iterator());
+    updateChatIsTranslatable(update.chatId, update.isTranslatable, specificChatListeners.iterator(update.chatId));
   }
 
   // updateChatIsBlocked
@@ -1459,6 +1542,12 @@ public class TdlibListeners {
   void updateConnectionType (@NonNull TdApi.NetworkType networkType) {
     for (ConnectionListener listener : connectionListeners) {
       listener.onConnectionTypeChanged(networkType);
+    }
+  }
+
+  void updateConnectionDisplayStatusChanged () {
+    for (ConnectionListener listener : connectionListeners) {
+      listener.onConnectionDisplayStatusChanged();
     }
   }
 

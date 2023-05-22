@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@ import org.thunderdog.challegram.data.TGMessage;
 import org.thunderdog.challegram.data.TGMessageBotInfo;
 import org.thunderdog.challegram.data.TGMessageMedia;
 import org.thunderdog.challegram.data.TGMessagePoll;
+import org.thunderdog.challegram.data.ThreadInfo;
 import org.thunderdog.challegram.mediaview.data.MediaItem;
 import org.thunderdog.challegram.navigation.ViewController;
 import org.thunderdog.challegram.v.MessagesRecyclerView;
@@ -64,6 +65,14 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesHolder> {
     MessagesRecyclerView recyclerView = manager.controller().getMessagesView();
     if (recyclerView != null) {
       recyclerView.invalidate();
+    }
+  }
+
+  public void checkAllMessages () {
+    if (items != null) {
+      for (TGMessage message : items) {
+        message.checkHighlightedText();
+      }
     }
   }
 
@@ -487,7 +496,12 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesHolder> {
       if ((!needScrollToBottom || message.isOld()) && !message.isOutgoing() && message.checkIsUnread(false) && !hasUnreadSeparator()) {
         TdApi.Chat chat = message.tdlib().chat(message.getChatId());
         if (chat != null) {
-          message.setShowUnreadBadge(chat.unreadCount > 0);
+          ThreadInfo messageThread = message.messagesController().getMessageThread();
+          if (messageThread != null) {
+            message.setShowUnreadBadge(messageThread.hasUnreadMessages(chat));
+          } else {
+            message.setShowUnreadBadge(chat.unreadCount > 0);
+          }
         }
       }
     }
@@ -601,7 +615,12 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesHolder> {
           if (!message.isOutgoing() /*&& (message.isOld() || )*/ && message.checkIsUnread(false)) {
             TdApi.Chat chat = message.tdlib().chat(message.getChatId());
             if (chat != null) {
-              message.setShowUnreadBadge(chat.unreadCount > 0);
+              ThreadInfo messageThread = message.messagesController().getMessageThread();
+              if (messageThread != null) {
+                message.setShowUnreadBadge(messageThread.hasUnreadMessages(chat));
+              } else {
+                message.setShowUnreadBadge(chat.unreadCount > 0);
+              }
             }
             break;
           }

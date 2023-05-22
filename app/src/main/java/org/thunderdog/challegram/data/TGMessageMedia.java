@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,14 +39,15 @@ import org.thunderdog.challegram.support.ViewSupport;
 import org.thunderdog.challegram.tool.Paints;
 import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.UI;
+import org.thunderdog.challegram.util.text.Highlight;
 import org.thunderdog.challegram.util.text.Text;
 import org.thunderdog.challegram.util.text.TextEntity;
-import org.thunderdog.challegram.util.text.TextMedia;
 import org.thunderdog.challegram.util.text.TextWrapper;
 
 import java.util.ArrayList;
 
 import me.vkryl.android.animator.FactorAnimator;
+import me.vkryl.core.MathUtils;
 import me.vkryl.core.lambda.CancellableRunnable;
 import me.vkryl.td.Td;
 
@@ -60,21 +61,21 @@ public class TGMessageMedia extends TGMessage {
   private int timerWidth;
   // private int pTimerRight, pTimerTop;
 
-  protected TGMessageMedia (MessagesManager context, TdApi.Message msg, @NonNull TdApi.Photo photo, TdApi.FormattedText caption) {
+  protected TGMessageMedia (MessagesManager context, TdApi.Message msg, @NonNull TdApi.MessagePhoto photo, TdApi.FormattedText caption) {
     super(context, msg);
     MediaWrapper mediaWrapper = new MediaWrapper(context(), tdlib, photo, msg.chatId, msg.id, this, true);
     mediaWrapper.setViewProvider(currentViews);
     init(mediaWrapper, caption);
   }
 
-  protected TGMessageMedia (MessagesManager context, TdApi.Message msg, @NonNull TdApi.Video video, TdApi.FormattedText caption) {
+  protected TGMessageMedia (MessagesManager context, TdApi.Message msg, @NonNull TdApi.MessageVideo video, TdApi.FormattedText caption) {
     super(context, msg);
     MediaWrapper mediaWrapper = new MediaWrapper(context(), tdlib, video, msg.chatId, msg.id, this, true);
     mediaWrapper.setViewProvider(currentViews);
     init(mediaWrapper, caption);
   }
 
-  protected TGMessageMedia (MessagesManager context, TdApi.Message msg, @NonNull TdApi.Animation animation, TdApi.FormattedText caption) {
+  protected TGMessageMedia (MessagesManager context, TdApi.Message msg, @NonNull TdApi.MessageAnimation animation, TdApi.FormattedText caption) {
     super(context, msg);
     MediaWrapper mediaWrapper = new MediaWrapper(context(), tdlib, animation, msg.chatId, msg.id, this, true);
     mediaWrapper.setViewProvider(currentViews);
@@ -94,18 +95,19 @@ public class TGMessageMedia extends TGMessage {
 
   private MediaWrapper createMediaWrapper (TdApi.Message message, TdApi.MessageContent content) {
     MediaWrapper mediaWrapper;
+    //noinspection SwitchIntDef
     switch (content.getConstructor()) {
       case TdApi.MessagePhoto.CONSTRUCTOR:
-        mediaWrapper = new MediaWrapper(context(), tdlib, ((TdApi.MessagePhoto) content).photo, message.chatId, message.id, this, true);
+        mediaWrapper = new MediaWrapper(context(), tdlib, (TdApi.MessagePhoto) content, message.chatId, message.id, this, true);
         break;
       case TdApi.MessageVideo.CONSTRUCTOR:
-        mediaWrapper = new MediaWrapper(context(), tdlib, ((TdApi.MessageVideo) content).video, message.chatId, message.id, this, true);
+        mediaWrapper = new MediaWrapper(context(), tdlib, (TdApi.MessageVideo) content, message.chatId, message.id, this, true);
         break;
       case TdApi.MessageAnimation.CONSTRUCTOR:
-        mediaWrapper = new MediaWrapper(context(), tdlib, ((TdApi.MessageAnimation) content).animation, message.chatId, message.id, this, true);
+        mediaWrapper = new MediaWrapper(context(), tdlib, (TdApi.MessageAnimation) content, message.chatId, message.id, this, true);
         break;
       default:
-        throw new IllegalArgumentException("message.content == " + content);
+        throw new UnsupportedOperationException(content.toString());
     }
     mediaWrapper.setViewProvider(currentViews);
     mediaWrapper.setSelectionAnimator(findSelectionAnimator(message.id));
@@ -197,6 +199,10 @@ public class TGMessageMedia extends TGMessage {
   private boolean isBeingEdited;
 
   private boolean checkCommonCaption () {
+    return checkCommonCaption(false);
+  }
+
+  private boolean checkCommonCaption (boolean force) {
     TdApi.FormattedText caption = null;
     long captionMessageId = 0;
     boolean hasEditedText = false;
@@ -224,7 +230,7 @@ public class TGMessageMedia extends TGMessage {
       }
     }
     this.isBeingEdited = hasEditedText;
-    return setCaption(caption, captionMessageId);
+    return setCaption(caption, captionMessageId, force);
   }
 
   @Override
@@ -252,19 +258,33 @@ public class TGMessageMedia extends TGMessage {
   }
 
   private boolean setCaption (TdApi.FormattedText caption, long messageId) {
+    return setCaption(caption, messageId, false);
+  }
+
+  @Override
+  protected void onUpdateHighlightedText () {
+    if (mosaicWrapper != null) {
+      checkCommonCaption(true);
+      rebuildContent();
+    }
+  }
+
+  private boolean setCaption (TdApi.FormattedText caption, long messageId, boolean force) {
     this.captionMessageId = messageId;
-    if (!Td.equalsTo(this.caption, caption)) {
+    if (!Td.equalsTo(this.caption, caption) || force) {
       this.caption = caption;
       if (this.wrapper != null) {
         this.wrapper.performDestroy();
       }
       if (!Td.isEmpty(caption)) {
-        this.wrapper = new TextWrapper(caption.text, getTextStyleProvider(), getTextColorSet())
-          .setEntities(TextEntity.valueOf(tdlib, caption, openParameters()), (wrapper, text, specificMedia) -> {
+        TdApi.FormattedText fText = translatedText != null ? translatedText: caption;
+        this.wrapper = new TextWrapper(fText.text, getTextStyleProvider(), getTextColorSet())
+          .setEntities(TextEntity.valueOf(tdlib, fText, openParameters()), (wrapper, text, specificMedia) -> {
             if (this.wrapper == wrapper) {
               invalidateTextMediaReceiver(text, specificMedia);
             }
           })
+          .setHighlightText(getHighlightedText(Highlight.Pool.KEY_MEDIA_CAPTION, fText.text))
           .addTextFlags(Text.FLAG_BIG_EMOJI)
           .setClickCallback(clickCallback());
         this.wrapper.setViewProvider(currentViews);
@@ -303,6 +323,7 @@ public class TGMessageMedia extends TGMessage {
   // Photo
 
   private static boolean isAcceptedMessageContent (TdApi.MessageContent content) {
+    //noinspection SwitchIntDef
     switch (content.getConstructor()) {
       case TdApi.MessageAnimation.CONSTRUCTOR:
       case TdApi.MessageVideo.CONSTRUCTOR:
@@ -343,19 +364,34 @@ public class TGMessageMedia extends TGMessage {
     } else {
       MediaWrapper wrapper = mosaicWrapper.findMediaWrapperByMessageId(message.id);
       if (wrapper != null) {
+        int oldContentWidth = wrapper.getContentWidth();
+        int oldContentHeight = wrapper.getContentHeight();
+        boolean updated;
+        //noinspection SwitchIntDef
         switch (newContent.getConstructor()) {
           case TdApi.MessagePhoto.CONSTRUCTOR: {
             TdApi.MessagePhoto newPhoto = (TdApi.MessagePhoto) newContent;
-            int oldContentWidth = wrapper.getContentWidth();
-            int oldContentHeight = wrapper.getContentHeight();
-            if (wrapper.updatePhoto(message.id, newPhoto)) {
-              if (oldContentWidth != wrapper.getContentWidth() || oldContentHeight != wrapper.getContentHeight()) {
-                mosaicWrapper.rebuild();
-              }
-              changed |= FLAG_CHANGED_RECEIVERS;
-            }
+            updated = wrapper.updatePhoto(message.id, newPhoto);
             break;
           }
+          case TdApi.MessageVideo.CONSTRUCTOR: {
+            TdApi.MessageVideo newVideo = (TdApi.MessageVideo) newContent;
+            updated = wrapper.updateVideo(message.id, newVideo);
+            break;
+          }
+          case TdApi.MessageAnimation.CONSTRUCTOR: {
+            TdApi.MessageAnimation newAnimation = (TdApi.MessageAnimation) newContent;
+            updated = wrapper.updateAnimation(message.id, newAnimation);
+            break;
+          }
+          default:
+            throw new UnsupportedOperationException(newContent.toString());
+        }
+        if (updated) {
+          if (oldContentWidth != wrapper.getContentWidth() || oldContentHeight != wrapper.getContentHeight()) {
+            mosaicWrapper.rebuild();
+          }
+          changed |= FLAG_CHANGED_RECEIVERS;
         }
       }
     }
@@ -405,7 +441,20 @@ public class TGMessageMedia extends TGMessage {
       maxHeight = getSmallestMaxContentHeight();
     }
 
-    mosaicWrapper.build(maxWidth, maxHeight, needFullWidth ? MosaicWrapper.MODE_FIT_WIDTH : MosaicWrapper.MODE_FIT_AS_IS, false);
+    int minWidth = Screen.dp(MosaicWrapper.MIN_LAYOUT_WIDTH);
+    int minHeight = Screen.dp(MosaicWrapper.MIN_LAYOUT_HEIGHT);
+
+    if (commentButton.isVisible() && commentButton.isInline() && useBubbles() && !allowBubbleHorizontalExtend()) {
+      float minContentWidth = commentButton.getAnimatedWidth(0, 1f) - getBubbleContentPadding() * 2;
+      if (minContentWidth > minWidth) {
+        minWidth = Math.round(MathUtils.fromTo(minWidth, minContentWidth, commentButton.getVisibility()));
+      }
+    }
+
+    minWidth = Math.min(minWidth, maxWidth);
+    minHeight = Math.min(minHeight, maxHeight);
+
+    mosaicWrapper.build(maxWidth, maxHeight, minWidth, minHeight, needFullWidth ? MosaicWrapper.MODE_FIT_WIDTH : MosaicWrapper.MODE_FIT_AS_IS, false);
 
     if (isHot()) {
       updateTimerText();
@@ -544,7 +593,8 @@ public class TGMessageMedia extends TGMessage {
     }
 
     if (wrapper != null) {
-      wrapper.draw(c, getTextX(view, wrapper, false), getTextX(view, wrapper, true), Config.MOVE_BUBBLE_TIME_RTL_TO_LEFT ? 0 : getBubbleTimePartWidth(), startY + mosaicWrapper.getHeight() + Screen.dp(TEXT_MARGIN), null, 1f, view.getTextMediaReceiver());
+      float alpha = getTranslationLoadingAlphaValue();
+      wrapper.draw(c, getTextX(view, wrapper, false), getTextX(view, wrapper, true), Config.MOVE_BUBBLE_TIME_RTL_TO_LEFT ? 0 : getBubbleTimePartWidth(), startY + mosaicWrapper.getHeight() + Screen.dp(TEXT_MARGIN), null, alpha, view.getTextMediaReceiver());
     }
   }
 
@@ -713,12 +763,18 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   protected int getContentWidth () {
-    return wrapper == null ? mosaicWrapper.getWidth() : Math.max(mosaicWrapper.getWidth(), wrapper.getWidth());
+    int mosaicWidth = mosaicWrapper != null ? mosaicWrapper.getWidth() : 0;
+    return wrapper == null ?
+      mosaicWidth :
+      Math.max(mosaicWidth, wrapper.getWidth());
   }
 
   @Override
   protected int getContentHeight () {
-    return wrapper == null ? mosaicWrapper.getHeight() : mosaicWrapper.getHeight() + wrapper.getHeight() + Screen.dp(TEXT_MARGIN) + (useBubbles() && !useForward() ? Screen.dp(TEXT_MARGIN) - getBubbleContentPadding() : 0);
+    int mosaicHeight = mosaicWrapper != null ? mosaicWrapper.getHeight() : 0;
+    return wrapper == null ?
+      mosaicHeight :
+      mosaicHeight + wrapper.getHeight() + Screen.dp(TEXT_MARGIN) + (useBubbles() && !useForward() ? Screen.dp(TEXT_MARGIN) - getBubbleContentPadding() : 0);
   }
 
   // Touch
@@ -785,6 +841,9 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   public boolean allowLongPress (float x, float y) {
+    if (!super.allowLongPress(x, y)) {
+      return false;
+    }
     int cellLeft = getContentX();
     int cellTop = getContentY();
     int cellRight = cellLeft + mosaicWrapper.getWidth();
@@ -801,5 +860,22 @@ public class TGMessageMedia extends TGMessage {
 
   public boolean isVideoFirstInMosaic (int mediaId) {
     return mosaicWrapper.isSingular() || (mosaicWrapper.getSingularItem() != null && mosaicWrapper.getSingularItem().isVideo() && mosaicWrapper.getSingularItem().getVideo().video.id == mediaId);
+  }
+
+  private TdApi.FormattedText translatedText;
+
+  @Nullable
+  @Override
+  public TdApi.FormattedText getTextToTranslateImpl () {
+    return caption;
+  }
+
+  @Override
+  protected void setTranslationResult (@Nullable TdApi.FormattedText text) {
+    translatedText = text;
+    checkCommonCaption(true);
+    rebuildAndUpdateContent();
+    invalidateTextMediaReceiver();
+    super.setTranslationResult(text);
   }
 }

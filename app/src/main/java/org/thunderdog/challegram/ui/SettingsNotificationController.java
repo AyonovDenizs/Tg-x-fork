@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,6 +64,7 @@ import org.thunderdog.challegram.telegram.NotificationSettingsListener;
 import org.thunderdog.challegram.telegram.Tdlib;
 import org.thunderdog.challegram.telegram.TdlibAccount;
 import org.thunderdog.challegram.telegram.TdlibManager;
+import org.thunderdog.challegram.telegram.TdlibNotificationChannelGroup;
 import org.thunderdog.challegram.telegram.TdlibNotificationManager;
 import org.thunderdog.challegram.telegram.TdlibNotificationUtils;
 import org.thunderdog.challegram.telegram.TdlibOptionListener;
@@ -368,6 +369,7 @@ public class SettingsNotificationController extends RecyclerViewController<Setti
       case TdlibNotificationManager.Status.FIREBASE_ERROR:
         return R.drawable.baseline_bug_report_24;
       case TdlibNotificationManager.Status.ACCOUNT_NOT_SELECTED:
+      case TdlibNotificationManager.Status.MISSING_PERMISSION:
       case TdlibNotificationManager.Status.BLOCKED_ALL:
       case TdlibNotificationManager.Status.BLOCKED_CATEGORY:
       case TdlibNotificationManager.Status.INTERNAL_ERROR:
@@ -389,6 +391,7 @@ public class SettingsNotificationController extends RecyclerViewController<Setti
         return R.string.ShareNotificationError;
       case TdlibNotificationManager.Status.FIREBASE_ERROR:
         return R.string.FirebaseErrorResolve;
+      case TdlibNotificationManager.Status.MISSING_PERMISSION:
       case TdlibNotificationManager.Status.ACCOUNT_NOT_SELECTED:
       case TdlibNotificationManager.Status.BLOCKED_ALL:
       case TdlibNotificationManager.Status.BLOCKED_CATEGORY:
@@ -401,6 +404,9 @@ public class SettingsNotificationController extends RecyclerViewController<Setti
   private CharSequence makeErrorDescription (@TdlibNotificationManager.Status int status) {
     int guideRes = R.string.NotificationsGuideBlockedApp;
     switch (status) {
+      case TdlibNotificationManager.Status.MISSING_PERMISSION:
+        guideRes = R.string.NotificationsGuidePermission;
+        break;
       case TdlibNotificationManager.Status.BLOCKED_ALL:
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
           guideRes = R.string.NotificationsGuideBlockedAll;
@@ -1802,7 +1808,12 @@ public class SettingsNotificationController extends RecyclerViewController<Setti
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
           String channelId = tdlib.notifications().getSystemChannelId(getScope(item), customChatId);
           if (customChatId == 0) {
-            tdlib.notifications().createChannels();
+            try {
+              tdlib.notifications().createChannels();
+            } catch (TdlibNotificationChannelGroup.ChannelCreationFailureException e) {
+              context.tooltipManager().builder(v).icon(R.drawable.baseline_error_24).show(tdlib, Log.toString(e));
+              return;
+            }
           }
           Intent intent = new Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS);
           intent.putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, channelId);

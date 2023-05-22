@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,6 +55,8 @@ public class ImageGalleryFile extends ImageFile implements Comparable<ImageGalle
   private long videoBitrate;
   private int videoFrameRate;
 
+  private boolean isFavorite;
+
   public ImageGalleryFile (long imageId, String path, long dateTaken, int width, int height, long bucketId, boolean needThumb) {
     super(null, TD.newFile(CURRENT_ID--, Integer.toString(CURRENT_ID), path, 1));
     this.id = imageId;
@@ -87,7 +89,16 @@ public class ImageGalleryFile extends ImageFile implements Comparable<ImageGalle
     this.duration = source.duration;
     this.mimeType = source.mimeType;
     // this.caption = source.caption;
+    this.isFavorite = source.isFavorite;
     setSize(source.getSize());
+  }
+
+  public void setFavorite (boolean favorite) {
+    isFavorite = favorite;
+  }
+
+  public boolean isFavorite () {
+    return isFavorite;
   }
 
   @Override

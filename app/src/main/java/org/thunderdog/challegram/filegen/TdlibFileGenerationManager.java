@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -386,7 +386,7 @@ public final class TdlibFileGenerationManager {
       String[] args = arg.split(",");
       final int themeId = StringUtils.parseInt(args[0]);
       final int flags = args.length > 1 ? StringUtils.parseInt(args[1]) : 0;
-      if (ThemeManager.isCustomTheme(themeId) || BitwiseUtils.getFlag(flags, Theme.EXPORT_FLAG_INCLUDE_DEFAULT_VALUES) || ThemeSet.getProperty(themeId, ThemeProperty.PARENT_THEME) != 0) {
+      if (ThemeManager.isCustomTheme(themeId) || BitwiseUtils.hasFlag(flags, Theme.EXPORT_FLAG_INCLUDE_DEFAULT_VALUES) || ThemeSet.getProperty(themeId, ThemeProperty.PARENT_THEME) != 0) {
         String author = args.length > 2 ? args[2] : null;
         exportTheme(generationId, themeId, flags, author, destinationPath);
       } else {
@@ -1138,7 +1138,7 @@ public final class TdlibFileGenerationManager {
     compress(info, bitmap, info.isFiltered() ? 100 : applyLessCompression ? COMPRESSION_LEVEL_LESS : COMPRESSION_LEVEL, isTransparent && info.getAllowTransparency());
 
     if (saveToGallery) {
-      Background.instance().post(() -> U.savePhotoToGallery(originalBitmap, isTransparent), 750);
+      Background.instance().post(() -> U.savePhotoToGallery(UI.getUiContext(), originalBitmap, isTransparent), 750);
     }
   }
 

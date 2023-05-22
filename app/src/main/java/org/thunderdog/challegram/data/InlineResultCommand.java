@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,6 +30,8 @@ import org.thunderdog.challegram.theme.Theme;
 import org.thunderdog.challegram.tool.Paints;
 import org.thunderdog.challegram.tool.Screen;
 
+import me.vkryl.td.Td;
+
 public class InlineResultCommand extends InlineResult<TdApi.BotCommand> {
   private final UserContext userContext;
 
@@ -43,8 +45,14 @@ public class InlineResultCommand extends InlineResult<TdApi.BotCommand> {
     this.userContext = new UserContext(tdlib, user);
   }
 
+  @Nullable
   public String getUsername () {
-    return userContext.getUser() != null ? userContext.getUser().username : null;
+    return Td.primaryUsername(getUsernames());
+  }
+
+  @Nullable
+  public TdApi.Usernames getUsernames () {
+    return userContext.getUser() != null ? userContext.getUser().usernames : null;
   }
 
   public String getCommand () {

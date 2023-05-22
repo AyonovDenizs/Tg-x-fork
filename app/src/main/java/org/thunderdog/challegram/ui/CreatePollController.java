@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@ package org.thunderdog.challegram.ui;
 
 import android.content.Context;
 import android.graphics.Rect;
-import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.view.View;
@@ -44,7 +43,6 @@ import org.thunderdog.challegram.tool.Views;
 import org.thunderdog.challegram.util.CharacterStyleFilter;
 import org.thunderdog.challegram.util.HapticMenuHelper;
 import org.thunderdog.challegram.v.CustomRecyclerView;
-import org.thunderdog.challegram.v.EditText;
 import org.thunderdog.challegram.widget.FillingDecoration;
 import org.thunderdog.challegram.widget.MaterialEditTextGroup;
 import org.thunderdog.challegram.widget.RadioView;
@@ -83,7 +81,7 @@ public class CreatePollController extends RecyclerViewController<CreatePollContr
   }
 
   public interface Callback {
-    boolean onSendPoll (CreatePollController context, long chatId, long messageThreadId, TdApi.InputMessagePoll poll, boolean forceDisableNotification, TdApi.MessageSchedulingState schedulingState, RunnableData<TdApi.Message> after);
+    boolean onSendPoll (CreatePollController context, long chatId, long messageThreadId, TdApi.InputMessagePoll poll, TdApi.MessageSendOptions sendOptions, RunnableData<TdApi.Message> after);
     boolean areScheduledOnly (CreatePollController context);
     TdApi.ChatList provideChatList (CreatePollController context);
   }
@@ -292,7 +290,7 @@ public class CreatePollController extends RecyclerViewController<CreatePollContr
       currentMenu = tdlib.ui().createSimpleHapticMenu(this, getArgumentsStrict().chatId, this::canSendPoll, () -> {
         TdApi.FormattedText explanation = getExplanation(false);
         return explanation != null && explanation.text.trim().length() <= TdConstants.MAX_QUIZ_EXPLANATION_LENGTH && Td.parseMarkdown(explanation);
-      }, null, this::send, null)
+      }, null, null, this::send, null)
               .attachToView(getDoneButton());
     }
   }
@@ -633,7 +631,7 @@ public class CreatePollController extends RecyclerViewController<CreatePollContr
 
   @Override
   protected void onDoneClick () {
-    send(false, null, false);
+    send(Td.newSendOptions(), false);
   }
 
   private TdApi.FormattedText getExplanation (boolean parseMarkdown) {
@@ -647,7 +645,7 @@ public class CreatePollController extends RecyclerViewController<CreatePollContr
     return null;
   }
 
-  private void send (boolean forceDisableNotification, TdApi.MessageSchedulingState schedulingState, boolean disableMarkdown) {
+  private void send (TdApi.MessageSendOptions sendOptions, boolean disableMarkdown) {
     if (getDoneButton().isInProgress())
       return;
     String question = StringUtils.trim(questionItem.getStringValue());
@@ -675,8 +673,8 @@ public class CreatePollController extends RecyclerViewController<CreatePollContr
     Args args = getArgumentsStrict();
     final long chatId = args.chatId;
     final ThreadInfo messageThread = args.messageThread;
-    if (schedulingState == null && args.callback.areScheduledOnly(this)) {
-      tdlib.ui().showScheduleOptions(this, chatId, false, (forceDisableNotification1, schedulingState1, disableMarkdown1) -> send(forceDisableNotification, schedulingState1, disableMarkdown), null);
+    if (sendOptions.schedulingState == null && args.callback.areScheduledOnly(this)) {
+      tdlib.ui().showScheduleOptions(this, chatId, false, (modifiedSendOptions, disableMarkdown1) -> send(modifiedSendOptions, disableMarkdown), sendOptions, null);
       return;
     }
 
@@ -694,11 +692,11 @@ public class CreatePollController extends RecyclerViewController<CreatePollContr
         if (!isDestroyed()) {
           getDoneButton().setInProgress(false);
           if (message != null) {
-            if (schedulingState != null && !args.callback.areScheduledOnly(this)) {
+            if (sendOptions.schedulingState != null && !args.callback.areScheduledOnly(this)) {
               NavigationStack stack = navigationStack();
               if (stack != null) {
                 MessagesController c = new MessagesController(context, tdlib);
-                c.setArguments(new MessagesController.Arguments(args.callback.provideChatList(this), tdlib.chatStrict(args.chatId), messageThread, null, MessagesManager.HIGHLIGHT_MODE_NONE, null).setScheduled(true));
+                c.setArguments(new MessagesController.Arguments(args.callback.provideChatList(this), tdlib.chatStrict(args.chatId), /* messageThread */ null, null, MessagesManager.HIGHLIGHT_MODE_NONE, null).setScheduled(true));
                 stack.insertBack(c);
               }
             }
@@ -707,8 +705,9 @@ public class CreatePollController extends RecyclerViewController<CreatePollContr
         }
       });
     };
-    if (!getArgumentsStrict().callback.onSendPoll(this, chatId, messageThread != null ? messageThread.getMessageThreadId() : 0, poll, forceDisableNotification, schedulingState, after)) {
-      tdlib.sendMessage(chatId, messageThread != null ? messageThread.getMessageThreadId() : 0, 0, tdlib.chatDefaultDisableNotifications(chatId), false, poll, after);
+    final TdApi.MessageSendOptions finalSendOptions = Td.newSendOptions(sendOptions, tdlib.chatDefaultDisableNotifications(chatId));
+    if (!getArgumentsStrict().callback.onSendPoll(this, chatId, messageThread != null ? messageThread.getMessageThreadId() : 0, poll, finalSendOptions, after)) {
+      tdlib.sendMessage(chatId, messageThread != null ? messageThread.getMessageThreadId() : 0, 0, finalSendOptions, poll, after);
     }
   }
 }

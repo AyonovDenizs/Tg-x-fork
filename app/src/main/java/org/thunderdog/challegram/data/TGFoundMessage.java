@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,11 +15,8 @@
 package org.thunderdog.challegram.data;
 
 import org.drinkless.td.libcore.telegram.TdApi;
-import org.thunderdog.challegram.loader.ImageFile;
 import org.thunderdog.challegram.telegram.Tdlib;
 import org.thunderdog.challegram.util.text.Highlight;
-
-import me.vkryl.core.StringUtils;
 
 public class TGFoundMessage {
   private final TGFoundChat chat;
@@ -50,14 +47,6 @@ public class TGFoundMessage {
 
   public Highlight getHighlight () {
     return highlight;
-  }
-
-  public ImageFile getAvatar () {
-    return chat.getAvatar();
-  }
-
-  public AvatarPlaceholder.Metadata getAvatarPlaceholderMetadata () {
-    return chat.getAvatarPlaceholderMetadata();
   }
 
   public TdApi.Message getMessage () {

@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,6 @@
  */
 package org.thunderdog.challegram.tool;
 
-import android.Manifest;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.NotificationManager;
@@ -49,7 +48,9 @@ import org.thunderdog.challegram.core.Lang;
 import org.thunderdog.challegram.data.TD;
 import org.thunderdog.challegram.receiver.LiveLocationReceiver;
 import org.thunderdog.challegram.receiver.TGShareBroadcastReceiver;
+import org.thunderdog.challegram.telegram.TdlibNotificationChannelGroup;
 import org.thunderdog.challegram.theme.Theme;
+import org.thunderdog.challegram.util.Permissions;
 
 import java.io.File;
 import java.net.URLEncoder;
@@ -59,9 +60,11 @@ import java.util.Locale;
 
 import me.vkryl.core.ArrayUtils;
 import me.vkryl.core.StringUtils;
+import me.vkryl.core.lambda.RunnableBool;
 
 public class Intents {
   public static final int ACTIVITY_RESULT_GOOGLE_PLAY_UPDATE = 10001;
+  public static final int ACTIVITY_RESULT_GOOGLE_LOCATION_REQUEST = 10002;
   public static final int ACTIVITY_RESULT_IMAGE_CAPTURE = 100;
   public static final int ACTIVITY_RESULT_GALLERY = 101;
   public static final int ACTIVITY_RESULT_AUDIO = 102;
@@ -118,7 +121,11 @@ public class Intents {
       channel.enableVibration(false);
       channel.enableLights(false);
       channel.setSound(null, null);
-      m.createNotificationChannel(channel);
+      try {
+        m.createNotificationChannel(channel);
+      } catch (Throwable t) {
+        Log.v("Unable to create simple notification channel for id: %s", new TdlibNotificationChannelGroup.ChannelCreationFailureException(t), channelId);
+      }
     }
     return channelId;
   }
@@ -219,38 +226,36 @@ public class Intents {
     return openExcludeCurrentImpl(intent, null);
   }
 
+  public static void sendEmail (String email) {
+    sendEmail(email, "", "");
+  }
+
   public static void sendEmail (String emailAddress, String subject, String text) {
     sendEmail(emailAddress, subject, text, null);
   }
 
   public static void sendEmail (String emailAddress, String subject, String text, @Nullable String fallbackText) {
     try {
-      Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.fromParts(
-        "mailto", emailAddress, null));
-      intent.putExtra(Intent.EXTRA_SUBJECT, subject);
-      intent.putExtra(Intent.EXTRA_TEXT, text);
-      intent.putExtra(Intent.EXTRA_EMAIL, new String[] {emailAddress});
-      UI.startActivity(Intent.createChooser(intent, Lang.getString(R.string.SendMessageToX, emailAddress)));
+      Intent selectorIntent = new Intent(Intent.ACTION_SENDTO);
+      selectorIntent.setData(Uri.parse("mailto:"));
+
+      Intent emailIntent = new Intent(Intent.ACTION_SEND);
+      emailIntent.putExtra(Intent.EXTRA_EMAIL, new String[] {emailAddress});
+      emailIntent.putExtra(Intent.EXTRA_SUBJECT, subject);
+      emailIntent.putExtra(Intent.EXTRA_TEXT, text);
+      emailIntent.setSelector(selectorIntent);
+
+      UI.startActivity(Intent.createChooser(emailIntent, Lang.getString(R.string.SendMessageToX, emailAddress)));
     } catch (Throwable t) {
       if (fallbackText != null) {
         UI.showToast(fallbackText, Toast.LENGTH_LONG);
       } else {
         UI.showToast(R.string.NoEmailApp, Toast.LENGTH_SHORT);
         UI.showToast(Lang.getString(R.string.SendMessageToX, emailAddress), Toast.LENGTH_LONG);
+        if (!StringUtils.isEmpty(text)) {
+          shareText(text);
+        }
       }
-    }
-  }
-
-  public static void sendEmail (String email) {
-    try {
-      Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.fromParts(
-        "mailto", email, null));
-      intent.putExtra(Intent.EXTRA_SUBJECT, "");
-      intent.putExtra(Intent.EXTRA_TEXT, "");
-      intent.putExtra(Intent.EXTRA_EMAIL, new String[] {email});
-      UI.startActivity(Intent.createChooser(intent, Lang.getString(R.string.SendMessageToX, email)));
-    } catch (Throwable t) {
-      UI.showToast("No Email app found", Toast.LENGTH_SHORT);
     }
   }
 
@@ -316,11 +321,11 @@ public class Intents {
     }
   }
 
-  public static boolean openFile (File file, @Nullable String mimeType) {
-    return openFile(file, mimeType, false);
+  public static boolean openFile (final BaseActivity context, File file, @Nullable String mimeType) {
+    return openFile(context, file, mimeType, false);
   }
 
-  private static boolean openFile (final File file, @Nullable String mimeTypeRaw, final boolean isRetry) {
+  private static boolean openFile (final BaseActivity context, final File file, @Nullable String mimeTypeRaw, final boolean isRetry) {
     if (!isRetry) {
       String newMimeType = U.resolveMimeType(file.getPath());
       if (!StringUtils.isEmpty(newMimeType)) {
@@ -328,8 +333,13 @@ public class Intents {
       }
     }
     final String mimeType = mimeTypeRaw;
-    if (U.requestPermissionsIfNeeded(() -> openFile(file, mimeType, isRetry), Manifest.permission.READ_EXTERNAL_STORAGE))
+    if (context.permissions().requestReadExternalStorage(file, granted -> {
+      if (granted) {
+        openFile(context, file, mimeType, isRetry);
+      }
+    })) {
       return false;
+    }
 
     Uri uri = U.makeUriForFile(file, mimeType, isRetry);
 
@@ -396,13 +406,13 @@ public class Intents {
       if (!mimeType.endsWith("/*")) {
         int i = mimeType.lastIndexOf('/');
         if (i != -1) {
-          return openFile(file, mimeType.substring(0, i + 1) + "*", true);
+          return openFile(context, file, mimeType.substring(0, i + 1) + "*", true);
         }
       }
-      return openFile(file, null, true);
+      return openFile(context, file, null, true);
     }
 
-    return !isRetry && openFile(file, mimeType, true);
+    return !isRetry && openFile(context, file, mimeType, true);
   }
 
   private static File lastOutputMedia;
@@ -416,13 +426,18 @@ public class Intents {
     return file;
   }
 
-  public static void openCamera (Context context, boolean isPrivate, boolean isVideo) {
+  public static void openCamera (BaseActivity context, boolean isPrivate, boolean isVideo) {
+    RunnableBool after = granted -> {
+      openCamera(context, isPrivate, isVideo);
+    };
     if (isVideo) {
-      if (U.requestPermissionsIfNeeded(() -> openCamera(context, isPrivate, isVideo), Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE))
+      if (context.permissions().requestExternalRecordVideoPermissions(after)) {
         return;
+      }
     } else {
-      if (U.requestPermissionsIfNeeded(() -> openCamera(context, isPrivate, isVideo), Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE))
+      if (context.permissions().requestExternalAccessCameraPermission(after)) {
         return;
+      }
     }
     try {
       Intent intent = new Intent(isVideo ? MediaStore.ACTION_VIDEO_CAPTURE : MediaStore.ACTION_IMAGE_CAPTURE);
@@ -476,9 +491,14 @@ public class Intents {
     }
   }
 
-  public static void openGallery (boolean sendAsFile) {
-    if (U.requestPermissionsIfNeeded(() -> openGallery(sendAsFile), Manifest.permission.READ_EXTERNAL_STORAGE))
+  public static void openGallery (BaseActivity context, boolean sendAsFile) {
+    if (context.permissions().requestReadExternalStorage(Permissions.ReadType.EXTERNAL_IMAGES, grantResult -> {
+      if (grantResult == Permissions.GrantResult.ALL) {
+        openGallery(context, sendAsFile);
+      }
+    })) {
       return;
+    }
 
     try {
       Intent intent;
@@ -506,9 +526,14 @@ public class Intents {
     }
   }
 
-  public static void openAudio () {
-    if (U.requestPermissionsIfNeeded(Intents::openAudio, Manifest.permission.READ_EXTERNAL_STORAGE))
+  public static void openAudio (BaseActivity context) {
+    if (context.permissions().requestReadExternalStorage(Permissions.ReadType.EXTERNAL_AUDIO, grantResult -> {
+      if (grantResult == Permissions.GrantResult.ALL) {
+        openAudio(context);
+      }
+    })) {
       return;
+    }
 
     try {
       Intent intent;
@@ -695,7 +720,7 @@ public class Intents {
         builder.setActionButton(Drawables.getBitmap(R.drawable.baseline_share_24), Lang.getString(R.string.Share), PendingIntent.getBroadcast(UI.getContext(), 0, share, Intents.mutabilityFlags(true)), true);
         CustomTabsIntent intent = builder.build();
         intent.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (TD.isKnownHost(uri)) {
+        if (TD.isTelegramMeHost(uri)) {
           List<ResolveInfo> packages = getCustomTabsPackages(context);
           if (!packages.isEmpty()) {
             intent.intent.setPackage(packages.get(0).activityInfo.packageName);

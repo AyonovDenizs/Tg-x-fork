@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -89,9 +89,11 @@ import org.thunderdog.challegram.navigation.LocaleChanger;
 import org.thunderdog.challegram.navigation.RtlCheckListener;
 import org.thunderdog.challegram.navigation.ViewController;
 import org.thunderdog.challegram.receiver.RefreshRateLimiter;
+import org.thunderdog.challegram.telegram.RightId;
 import org.thunderdog.challegram.telegram.Tdlib;
 import org.thunderdog.challegram.theme.Theme;
 import org.thunderdog.challegram.tool.Fonts;
+import org.thunderdog.challegram.tool.Paints;
 import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
@@ -102,6 +104,8 @@ import org.thunderdog.challegram.util.CharacterStyleFilter;
 import org.thunderdog.challegram.util.ExternalEmojiFilter;
 import org.thunderdog.challegram.util.FinalNewLineFilter;
 import org.thunderdog.challegram.util.TextSelection;
+import org.thunderdog.challegram.util.text.Text;
+import org.thunderdog.challegram.util.text.TextColorSets;
 import org.thunderdog.challegram.widget.InputWrapperWrapper;
 import org.thunderdog.challegram.widget.NoClipEditText;
 
@@ -111,6 +115,10 @@ import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.List;
 
+import me.vkryl.android.AnimatorUtils;
+import me.vkryl.android.animator.BoolAnimator;
+import me.vkryl.android.animator.ListAnimator;
+import me.vkryl.android.animator.ReplaceAnimator;
 import me.vkryl.android.text.CodePointCountFilter;
 import me.vkryl.core.BitwiseUtils;
 import me.vkryl.core.StringUtils;
@@ -121,6 +129,16 @@ import me.vkryl.td.Td;
 public class InputView extends NoClipEditText implements InlineSearchContext.Callback, InlineResultsWrap.PickListener, RtlCheckListener, FinalNewLineFilter.Callback, CustomEmojiSurfaceProvider, Destroyable {
   public static final boolean USE_ANDROID_SELECTION_FIX = true;
   private final TextPaint paint;
+
+  private Text placeholderTitle;
+  private Text placeholderSubTitle;
+
+  private CharSequence placeholderTitleText;
+  private CharSequence placeholderSubtitleText;
+
+  private BoolAnimator showPlaceholder = new BoolAnimator(0, (a, b, c, d) -> invalidate(), AnimatorUtils.DECELERATE_INTERPOLATOR, 180L);
+  private BoolAnimator hasSubPlaceholder = new BoolAnimator(0, (a, b, c, d) -> invalidate(), AnimatorUtils.DECELERATE_INTERPOLATOR, 180L);
+  private ReplaceAnimator<Text> subtitleReplaceAnimator = new ReplaceAnimator<>(a -> invalidate(), AnimatorUtils.DECELERATE_INTERPOLATOR, 180L);
 
   // TODO: get rid of chat-related logic inside of InputView
   private @Nullable MessagesController controller;
@@ -144,8 +162,9 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
 
   private InputListener inputListener;
   private final RefreshRateLimiter refreshRateLimiter;
+  private final ViewController<?> boundController;
 
-  public InputView (Context context, Tdlib tdlib) {
+  public InputView (Context context, Tdlib tdlib, ViewController<?> boundController) {
     super(context);
     this.tdlib = tdlib;
     this.refreshRateLimiter = new RefreshRateLimiter(this, Config.MAX_ANIMATED_EMOJI_REFRESH_RATE);
@@ -153,7 +172,8 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
     this.mediaHolder.setUpdateListener((usages, displayMediaKey) ->
       refreshRateLimiter.invalidate()
     );
-    this.inlineContext = new InlineSearchContext(UI.getContext(context), tdlib, this);
+    this.inlineContext = new InlineSearchContext(UI.getContext(context), tdlib, this, boundController);
+    this.boundController = boundController;
     this.paint = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
     this.paint.setColor(Theme.textPlaceholderColor());
     this.paint.setTypeface(Fonts.getRobotoRegular());
@@ -278,6 +298,8 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
         }
       });
     }
+
+    showPlaceholder.setValue(true, false);
   }
 
   @Override
@@ -437,7 +459,7 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
   }
 
   private static boolean isComposingSpan (Spanned spanned, Object span) {
-    return BitwiseUtils.getFlag(spanned.getSpanFlags(span), Spanned.SPAN_COMPOSING);
+    return BitwiseUtils.hasFlag(spanned.getSpanFlags(span), Spanned.SPAN_COMPOSING);
   }
 
   private boolean setSpanImpl (int start, int end, TdApi.TextEntityType newType) {
@@ -698,7 +720,9 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
       setInput(blockedText, true, false);
     }
 
-    setAllowsAnyGravity(str.length() > 0);
+    final boolean hasText = s.length() > 0;
+    setAllowsAnyGravity(hasText);
+    showPlaceholder.setValue(!hasText, !hasText && UI.inUiThread());
   }
 
   @Override
@@ -724,24 +748,46 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
       return;
     }
     this.rawPlaceholder = placeholder;
-    if (controller == null) {
-      setHint(placeholder);
+    setInputPlaceholder(placeholder, null);
+    /*if (controller == null) {
+      // setHint(placeholder);
     } else {
       this.rawPlaceholderWidth = U.measureText(rawPlaceholder, getPaint());
       this.lastPlaceholderAvailWidth = 0;
       checkPlaceholderWidth();
+    }*/
+  }
+
+  public void setInputPlaceholder (CharSequence placeholder, CharSequence placeholderSubtitle) {
+    this.placeholderTitleText = placeholder;
+    this.placeholderSubtitleText = placeholderSubtitle;
+    if (controller != null) {
+      this.lastPlaceholderAvailWidth = 0;
+      checkPlaceholderWidth();
     }
+    invalidate();
   }
 
   public void checkPlaceholderWidth () {
-    if (lastPlaceholderRes != 0 && controller != null) {
+    if ((lastPlaceholderRes != 0 || !StringUtils.isEmpty(placeholderTitleText)) && controller != null) {
       int availWidth = Math.max(0, getMeasuredWidth() - controller.getHorizontalInputPadding() - getPaddingLeft());
       if (this.lastPlaceholderAvailWidth != availWidth) {
         this.lastPlaceholderAvailWidth = availWidth;
+
+        placeholderTitle = !StringUtils.isEmpty(placeholderTitleText)? new Text.Builder(tdlib, placeholderTitleText, null, availWidth, Paints.robotoStyleProvider(Screen.px(getTextSize())), TextColorSets.PLACEHOLDER, null)
+          .singleLine().clipTextArea().build(): null;
+
+        placeholderSubTitle = !StringUtils.isEmpty(placeholderSubtitleText) ? new Text.Builder(tdlib, placeholderSubtitleText, null, availWidth, Paints.robotoStyleProvider(Screen.px(getTextSize()) / 3f * 2f), TextColorSets.PLACEHOLDER, null)
+          .singleLine().clipTextArea().build(): null;
+
+        subtitleReplaceAnimator.replace(placeholderSubTitle, UI.inUiThread());
+
+        hasSubPlaceholder.setValue(placeholderSubTitle != null, UI.inUiThread());
+
         if (rawPlaceholderWidth <= availWidth) {
-          setHint(rawPlaceholder);
+          //setHint(rawPlaceholder);
         } else {
-          setHint(TextUtils.ellipsize(rawPlaceholder, getPaint(), availWidth, TextUtils.TruncateAt.END));
+          //setHint(TextUtils.ellipsize(rawPlaceholder, getPaint(), availWidth, TextUtils.TruncateAt.END));
         }
       }
     }
@@ -753,7 +799,7 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
 
   private void sendByEnter () {
     if (controller != null && needSendByEnter()) {
-      controller.pickDateOrProceed(false, null, (forceDisableNotification, schedulingState, disableMarkdown) -> controller.sendText(true, forceDisableNotification, schedulingState));
+      controller.pickDateOrProceed(Td.newSendOptions(), (sendOptions, disableMarkdown) -> controller.sendText(true, sendOptions));
     }
   }
 
@@ -792,7 +838,7 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
 
   @Override
   public boolean needsInlineBots () {
-    return !isCaptionEditing() && tdlib.canSendOtherMessages(controller.getChat());
+    return !isCaptionEditing() && tdlib.canSendMessage(controller.getChat(), RightId.SEND_OTHER_MESSAGES);
   }
 
   @Override
@@ -965,10 +1011,10 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
 
   private boolean textChangedSinceChatOpened, ignoreFirstLinkPreview;
 
-  public void setChat (TdApi.Chat chat, @Nullable ThreadInfo messageThread, boolean isSilent) {
+  public void setChat (TdApi.Chat chat, @Nullable ThreadInfo messageThread, @Nullable String customInputField, boolean isSilent) {
     textChangedSinceChatOpened = false;
-    updateMessageHint(chat, messageThread, isSilent);
-    setDraft(!tdlib.hasWritePermission(chat) ? null :
+    updateMessageHint(chat, messageThread, customInputField, isSilent);
+    setDraft(!tdlib.canSendBasicMessage(chat) ? null :
       messageThread != null ? messageThread.getDraftContent() :
       chat.draftMessage != null ? chat.draftMessage.inputMessageText : null
     );
@@ -988,25 +1034,37 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
     }
   }
 
-  public void updateMessageHint (TdApi.Chat chat, @Nullable ThreadInfo messageThread, boolean isSilent) {
+  public void updateMessageHint (TdApi.Chat chat, @Nullable ThreadInfo messageThread, @Nullable String customInputField, boolean isSilent) {
     if (chat == null) {
       setInputPlaceholder(R.string.Message);
       return;
     }
     int resource;
+    CharSequence subplaceholder = null;
     Object[] args = null;
     TdApi.ChatMemberStatus status = tdlib.chatStatus(chat.id);
     if (tdlib.isChannel(chat.id)) {
       resource = isSilent ? R.string.ChannelSilentBroadcast : R.string.ChannelBroadcast;
-    } else if (tdlib.isMultiChat(chat) && Td.isAnonymous(status)) {
+    } /*else if (tdlib.isMultiChat(chat) && Td.isAnonymous(status)) {
       resource = messageThread != null ? (messageThread.areComments() ? R.string.CommentAnonymously : R.string.MessageReplyAnonymously) :  R.string.MessageAnonymously;
     } else if (chat.messageSenderId != null && !tdlib.isSelfSender(chat.messageSenderId)) {
       resource = messageThread != null ? (messageThread.areComments() ? R.string.CommentAsX : R.string.MessageReplyAsX) : R.string.MessageAsX;
       args = new Object[] { tdlib.senderName(chat.messageSenderId) };
-    } else {
+    }*/ else {
       resource = messageThread != null ? (messageThread.areComments() ? R.string.Comment : R.string.MessageReply) : R.string.Message;
     }
-    setInputPlaceholder(resource, args);
+    if (!tdlib.isChannel(chat.id) && tdlib.isMultiChat(chat) && Td.isAnonymous(status) && !tdlib.isChannel(chat.messageSenderId)) {
+      subplaceholder = Lang.getStringBold(R.string.AnyAsX, Lang.getString(R.string.AnonymousAdmin)); // "as Anonymous Admin";
+    } else if (!tdlib.isChannel(chat.id) && chat.messageSenderId != null && !tdlib.isSelfSender(chat.messageSenderId)) {
+      subplaceholder = Lang.getStringBold(R.string.AnyAsX, tdlib.senderName(chat.messageSenderId));
+    }
+    String text;
+    if (StringUtils.isEmpty(customInputField)) {
+      text = Lang.getString(resource);
+    } else {
+      text = customInputField;
+    }
+    setInputPlaceholder(text, subplaceholder);
   }
 
   public void setDraft (@Nullable TdApi.InputMessageContent draftContent) {
@@ -1096,6 +1154,27 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
 
   @Override
   protected void onDraw (Canvas c) {
+    final float alpha = showPlaceholder.getFloatValue();
+    final int offset = (int) (hasSubPlaceholder.getFloatValue() * (getTextSize() / 18 * 8));
+    final int baseline = getBaseline();
+
+    if (alpha > 0f) {
+      if (placeholderTitle != null) {
+        final int titleHeight = placeholderTitle.getHeight();
+        final int titleBaseline = (int)(titleHeight * 0.75f);
+        final int y = baseline - titleBaseline - offset;
+        placeholderTitle.draw(c, getPaddingLeft(), y, null, alpha);
+        //c.drawRect(getPaddingLeft(), y, getPaddingLeft() + placeholderTitle.getWidth(), y + placeholderTitle.getHeight(), Paints.strokeSmallPaint(Color.GREEN));
+        //c.drawRect(getPaddingLeft(), y, getPaddingLeft() + placeholderTitle.getWidth(), y + placeholderTitle.getLineHeight(), Paints.strokeSmallPaint(Color.GREEN));
+      }
+      for (ListAnimator.Entry<Text> entry : subtitleReplaceAnimator) {
+        final int offset2 = (int) ((!entry.isAffectingList() ?
+          ((entry.getVisibility() - 1f) * (getTextSize() / 18f * 14f)):
+          ((1f - entry.getVisibility()) * (getTextSize() / 18f * 14f))));
+        entry.item.draw(c, getPaddingLeft(), baseline - offset / 2 + offset2, null, Math.min(alpha, entry.getVisibility()));
+      }
+    }
+
     super.onDraw(c);
     drawEmojiOverlay(c);
     if (this.displaySuffix.length() > 0 && this.prefix.length() > 0 && getLineCount() == 1) {
@@ -1105,6 +1184,8 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
         c.drawText(displaySuffix, getPaddingLeft() + prefixWidth, getBaseline(), paint);
       }
     }
+    // c.drawRect(0, baseline, getMeasuredWidth(), baseline, Paints.strokeSmallPaint(Color.RED));
+    // c.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), Paints.strokeBigPaint(Color.RED));
   }
 
   // Inline query
@@ -1178,7 +1259,7 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
   @Override
   public void onInlineQueryResultPick (InlineResult<?> result) {
     if (controller != null) {
-      controller.sendInlineQueryResult(result.getQueryId(), result.getId(), true, true, false, null);
+      controller.sendInlineQueryResult(result.getQueryId(), result.getId(), true, true, Td.newSendOptions());
     }
   }
 
@@ -1282,20 +1363,27 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
           final boolean isSecretChat = ChatId.isSecret(chatId);
           if (mediaType == MediaType.GIF && isAnimatedGif) {
             TdApi.InputFileGenerated generated = TD.newGeneratedFile(null, path, 0, timestamp);
-            content = tdlib.filegen().createThumbnail(new TdApi.InputMessageAnimation(generated, null, null, 0, imageWidth, imageHeight, null), isSecretChat);
+            content = tdlib.filegen().createThumbnail(new TdApi.InputMessageAnimation(generated, null, null, 0, imageWidth, imageHeight, null, false), isSecretChat);
           } else if ((mediaType != MediaType.JPEG && (mediaType == MediaType.WEBP || path.contains("sticker") || Math.max(imageWidth, imageHeight) <= 512))) {
             TdApi.InputFileGenerated generated = PhotoGenerationInfo.newFile(path, 0, timestamp, true, 512);
             content = tdlib.filegen().createThumbnail(new TdApi.InputMessageSticker(generated, null, imageWidth, imageHeight, null), isSecretChat);
           } else {
             TdApi.InputFileGenerated generated = PhotoGenerationInfo.newFile(path, 0, timestamp, false, 0);
-            content = tdlib.filegen().createThumbnail(new TdApi.InputMessagePhoto(generated, null, null, imageWidth, imageHeight, null, 0), isSecretChat);
+            content = tdlib.filegen().createThumbnail(new TdApi.InputMessagePhoto(generated, null, null, imageWidth, imageHeight, null, 0, false), isSecretChat);
           }
           if (needMenu) {
             tdlib.ui().post(() -> {
-              tdlib.ui().showScheduleOptions(controller, chatId, false, (forceDisableNotification, schedulingState, disableMarkdown) -> tdlib.sendMessage(chatId, messageThreadId, replyToMessageId, new TdApi.MessageSendOptions(forceDisableNotification || silent, false, false, schedulingState), content, null), null);
+              tdlib.ui().showScheduleOptions(controller, chatId, false,
+                (sendOptions, disableMarkdown) ->
+                  tdlib.sendMessage(chatId, messageThreadId, replyToMessageId,
+                    Td.newSendOptions(sendOptions, silent),
+                    content,
+                    null
+                  ),
+                null, null);
             });
           } else {
-            tdlib.sendMessage(chatId, messageThreadId, replyToMessageId, silent, false, content);
+            tdlib.sendMessage(chatId, messageThreadId, replyToMessageId, Td.newSendOptions(silent), content);
           }
         });
         // read and display inputContentInfo asynchronously.
@@ -1362,6 +1450,7 @@ public class InputView extends NoClipEditText implements InlineSearchContext.Cal
     BaseInputConnection.removeComposingSpans(text);
     TdApi.FormattedText result = new TdApi.FormattedText(text.toString(), TD.toEntities(text, false));
     if (applyMarkdown) {
+      //noinspection UnsafeOptInUsageError
       Td.parseMarkdown(result);
     }
     return result;

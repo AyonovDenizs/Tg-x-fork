@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,10 +14,7 @@
  */
 package org.thunderdog.challegram;
 
-import android.Manifest;
 import android.animation.ValueAnimator;
-import android.annotation.TargetApi;
-import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.Service;
@@ -35,6 +32,7 @@ import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.location.Location;
 import android.location.LocationManager;
 import android.media.AudioManager;
@@ -113,6 +111,7 @@ import org.thunderdog.challegram.mediaview.data.MediaItem;
 import org.thunderdog.challegram.telegram.Tdlib;
 import org.thunderdog.challegram.telegram.TdlibDataSource;
 import org.thunderdog.challegram.telegram.TdlibDelegate;
+import org.thunderdog.challegram.telegram.TdlibNotificationChannelGroup;
 import org.thunderdog.challegram.telegram.TdlibNotificationManager;
 import org.thunderdog.challegram.tool.Fonts;
 import org.thunderdog.challegram.tool.Intents;
@@ -122,6 +121,7 @@ import org.thunderdog.challegram.tool.TGMimeType;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.ui.TextController;
 import org.thunderdog.challegram.util.AppBuildInfo;
+import org.thunderdog.challegram.util.Permissions;
 import org.thunderdog.challegram.widget.NoScrollTextView;
 
 import java.io.BufferedReader;
@@ -158,13 +158,13 @@ import javax.microedition.khronos.egl.EGL11;
 
 import me.vkryl.android.SdkVersion;
 import me.vkryl.core.ArrayUtils;
+import me.vkryl.core.BitwiseUtils;
 import me.vkryl.core.FileUtils;
 import me.vkryl.core.MathUtils;
 import me.vkryl.core.StringUtils;
 import me.vkryl.core.collection.IntList;
 import me.vkryl.core.lambda.RunnableBool;
 import me.vkryl.core.lambda.RunnableData;
-import me.vkryl.core.BitwiseUtils;
 import me.vkryl.core.util.LocalVar;
 import me.vkryl.td.Td;
 import okio.BufferedSink;
@@ -849,7 +849,11 @@ public class U {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       android.app.NotificationChannel channel = new android.app.NotificationChannel(id, Lang.getString(stringRes), NotificationManager.IMPORTANCE_LOW);
       NotificationManager manager = (NotificationManager) UI.getAppContext().getSystemService(Context.NOTIFICATION_SERVICE);
-      manager.createNotificationChannel(channel);
+      try {
+        manager.createNotificationChannel(channel);
+      } catch (Throwable t) {
+        Log.v("Unable to create notification channel for id: %s", new TdlibNotificationChannelGroup.ChannelCreationFailureException(t), id);
+      }
     }
     return id;
   }
@@ -1137,7 +1141,7 @@ public class U {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && DocumentsContract.isDocumentUri(UI.getContext(), uri)) {
         if (isExternalStorageDocument(uri)) {
           final String docId = DocumentsContract.getDocumentId(uri);
-          final String[] split = docId.split(":");
+          final String[] split = docId.split(":", 2);
           final String type = split[0];
           if ("primary".equalsIgnoreCase(type)) {
             result = Environment.getExternalStorageDirectory() + "/" + split[1];
@@ -1148,7 +1152,7 @@ public class U {
           result = getDataColumn(UI.getContext(), contentUri, null, null);
         } else if (isMediaDocument(uri)) {
           final String docId = DocumentsContract.getDocumentId(uri);
-          final String[] split = docId.split(":");
+          final String[] split = docId.split(":", 2);
           final String type = split[0];
 
           Uri contentUri = null;
@@ -1204,7 +1208,7 @@ public class U {
       return;
     }
 
-    if (Intents.openFile(file, mimeType)) {
+    if (Intents.openFile(context.context(), file, mimeType)) {
       return;
     }
 
@@ -1217,6 +1221,16 @@ public class U {
     UI.showToast(R.string.NoAppToOpen, Toast.LENGTH_SHORT);
   }
 
+  public static float getAnimationScale (Context context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      return ValueAnimator.getDurationScale();
+    }
+    try {
+      return Settings.Global.getFloat(context.getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1.0f);
+    } catch (Throwable ignored) {
+      return 1.0f;
+    }
+  }
   public static String getDataColumn(Context context, Uri uri, String selection, String[] selectionArgs) {
     final String column = "_data";
     final String[] projection = {
@@ -1246,7 +1260,7 @@ public class U {
     return "com.android.providers.media.documents".equals(uri.getAuthority());
   }
 
-  public static boolean isGoogleDriveDocument(Uri uri) {
+  public static boolean isGoogleDriveDocument (Uri uri) {
     return "com.google.android.apps.docs.storage".equals(uri.getAuthority());
   }
 
@@ -1321,6 +1335,10 @@ public class U {
 
     public long getDuration (TimeUnit unit) {
       return unit.convert(durationMs, TimeUnit.MILLISECONDS);
+    }
+
+    public boolean isRotated () {
+      return U.isExifRotated(rotation);
     }
   }
 
@@ -1672,72 +1690,9 @@ public class U {
     return orientation;
   }
 
-  public static boolean requestPermissionsIfNeeded (Runnable onDone, String... permissions) {
-    if (permissions == null || permissions.length == 0)
-      return false;
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      if (U.needsPermissionRequest(permissions)) {
-        BaseActivity activity = UI.getUiContext();
-        if (activity != null) {
-          activity.requestCustomPermissions(permissions, (code, granted) -> {
-            if (granted) {
-              onDone.run();
-            }
-          });
-        }
-        return true;
-      }
-    }
-    return false;
-  }
-
-  public static boolean needsPermissionRequest (final String... permissions) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      BaseActivity context = UI.getUiContext();
-      if (context != null) {
-        for (String permission : permissions) {
-          if (context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
   public static void run (Runnable runnable) {
     if (runnable != null) {
       runnable.run();
-    }
-  }
-
-  public static boolean needsPermissionRequest (final String permission) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      BaseActivity context = UI.getUiContext();
-      return context != null && context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED;
-    }
-    return false;
-  }
-
-  public static boolean shouldShowPermissionRationale (final String permission) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      BaseActivity context = UI.getUiContext();
-      return context != null && context.shouldShowRequestPermissionRationale(permission);
-    }
-    return false;
-  }
-
-  public static void requestPermissions (final String[] permissions, final RunnableBool after) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      BaseActivity context = UI.getUiContext();
-      if (context == null) {
-        return;
-      }
-      context.requestCustomPermissions(permissions, (code, granted) -> {
-        if (after != null) {
-          after.runWithBool(granted);
-        }
-      });
     }
   }
 
@@ -1746,13 +1701,15 @@ public class U {
   public static final int TYPE_GIF = 2;
   public static final int TYPE_FILE = 3;
 
-  public static void savePhotoToGallery (final Bitmap bitmap, boolean transparent) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && needsPermissionRequest(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE)) {
-      requestPermissions(new String[] {Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, result -> {
-        if (result) {
-          savePhotoToGallery(bitmap, transparent);
-        }
-      });
+  public static void savePhotoToGallery (final BaseActivity activity, final Bitmap bitmap, boolean transparent) {
+    if (!UI.isValid(activity)) {
+      return;
+    }
+    if (activity.permissions().requestWriteExternalStorage(Permissions.WriteType.GALLERY, granted -> {
+      if (granted) {
+        savePhotoToGallery(activity, bitmap, transparent);
+      }
+    })) {
       return;
     }
     Background.instance().post(() -> {
@@ -1774,8 +1731,8 @@ public class U {
     });
   }
 
-  public static void copyToGallery (final String fromPath, final int type) {
-    copyToGallery(fromPath, type, true, null);
+  public static void copyToGallery (final BaseActivity context, final String fromPath, final int type) {
+    copyToGallery(context, fromPath, type, true, null);
   }
 
   public static boolean copyToGalleryImpl (final String fromPath, int type, RunnableData<File> onSaved) {
@@ -1798,13 +1755,12 @@ public class U {
     return false;
   }
 
-  public static void copyToGallery (final String fromPath, final int type, boolean needAlert, RunnableData<File> onSaved) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && needsPermissionRequest(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
-      requestPermissions(new String[] {Manifest.permission.WRITE_EXTERNAL_STORAGE}, result -> {
-        if (result) {
-          copyToGallery(fromPath, type, needAlert, onSaved);
-        }
-      });
+  public static void copyToGallery (final BaseActivity context, final String fromPath, final int type, boolean needAlert, RunnableData<File> onSaved) {
+    if (context.permissions().requestWriteExternalStorage(Permissions.WriteType.GALLERY, granted -> {
+      if (granted) {
+        copyToGallery(context, fromPath, type, needAlert, onSaved);
+      }
+    })) {
       return;
     }
     if (fromPath != null && !fromPath.isEmpty()) {
@@ -1828,7 +1784,8 @@ public class U {
     }
   }
 
-  public static File getAppDir (boolean allowExternal) {
+  @Deprecated
+  public static File getFilesDir (boolean allowExternal) {
     File file = null;
     if (allowExternal) {
       file = UI.getContext().getExternalFilesDir(null);
@@ -1837,8 +1794,8 @@ public class U {
   }
 
   public static File getRingtonesDir () {
-    File ringtonesDir = new File(getAppDir(false), "ringtones");
-    if (!ringtonesDir.exists() && !ringtonesDir.mkdir())
+    File ringtonesDir = new File(getFilesDir(false), "ringtones");
+    if (!FileUtils.createDirectory(ringtonesDir))
       throw new IllegalStateException();
     return ringtonesDir;
   }
@@ -1880,30 +1837,30 @@ public class U {
     return path.startsWith(privateDir);
   }
 
-  private static boolean moveFiles (File fromDirectory, File toDirectory) {
-    File[] mediaFiles = fromDirectory.listFiles();
-    if (mediaFiles == null || mediaFiles.length == 0) {
-      if (!fromDirectory.delete()) {
+  private static boolean moveDir (File fromDir, File toDir) {
+    if (!fromDir.exists() || !fromDir.isDirectory()) {
+      Log.w("Source directory does not exist or is not a directory");
+      return false;
+    }
+    File[] innerFiles = fromDir.listFiles();
+    if (innerFiles == null || innerFiles.length == 0) {
+      if (!fromDir.delete()) {
         Log.w("Unable to delete media directory");
         return false;
       }
       return true;
     }
-    if (!toDirectory.mkdirs() && !toDirectory.exists()) {
+    if (!FileUtils.createDirectory(toDir)) {
       Log.w("Failed to create output directory");
       return false;
     }
-    if (!toDirectory.isDirectory()) {
-      Log.w("Output directory is not a directory");
-      return false;
-    }
     int successCount = 0;
-    for (File fromFile : mediaFiles) {
-      File toFile = new File(toDirectory, fromFile.getName());
+    for (File fromFile : innerFiles) {
+      File toFile = new File(toDir, fromFile.getName());
       if (moveFile(fromFile, toFile))
         successCount++;
     }
-    return successCount == mediaFiles.length && fromDirectory.delete();
+    return successCount == innerFiles.length && fromDir.delete();
   }
 
   private static boolean moveFile (File fromFile, File toFile) {
@@ -1911,7 +1868,7 @@ public class U {
       return true;
     }
     if (fromFile.isDirectory()) {
-      return moveFiles(fromFile, toFile);
+      return moveDir(fromFile, toFile);
     }
     if (!FileUtils.copy(fromFile, toFile)) {
       Log.w("Cannot copy file");
@@ -1928,11 +1885,11 @@ public class U {
     if (toDirectory == null || toDirectory.equals(fromDirectory)) {
       return;
     }
-    moveFiles(fromDirectory, toDirectory);
+    moveDir(fromDirectory, toDirectory);
   }
 
   private static File getUnsecurePrivateAlbumDir () {
-    return new File(getAppDir(true), "media");
+    return new File(getFilesDir(true), "media");
   }
 
   public static File getAlbumDir (boolean isPrivate) {
@@ -1945,9 +1902,9 @@ public class U {
       }
     }
     if (isPrivate || storageDir == null) {
-      storageDir = new File(getAppDir(!isPrivate), "media");
+      storageDir = new File(getFilesDir(!isPrivate), "media");
     }
-    if (!storageDir.mkdirs() && !storageDir.exists()) {
+    if (!FileUtils.createDirectory(storageDir)) {
       Log.w("Failed to create album directory");
       // return null;
     }
@@ -2452,6 +2409,8 @@ public class U {
 
   public static String getUsefulMetadata (@Nullable Tdlib tdlib) {
     AppBuildInfo buildInfo = org.thunderdog.challegram.unsorted.Settings.instance().getCurrentBuildInformation();
+    String locale = UI.getAppContext().getResources().getConfiguration().locale.toString();
+    String appLocale = Lang.locale().toString();
     String metadata = Lang.getAppBuildAndVersion(tdlib) + " (" + BuildConfig.COMMIT + ")\n" +
       (!buildInfo.getPullRequests().isEmpty() ? "PRs: " + buildInfo.pullRequestsList() + "\n" : "") +
       "TDLib: " + Td.tdlibVersion() + " (tdlib/td@" + Td.tdlibCommitHash() + ")\n" +
@@ -2459,14 +2418,15 @@ public class U {
       "Device: " + Build.MANUFACTURER + " " + Build.BRAND + " " + Build.MODEL + " (" + Build.DISPLAY + ")\n" +
       "Screen: " + Screen.widestSide() + "x" + Screen.smallestSide() + " (density: " + Screen.density() + ", fps: " + Screen.refreshRate() + ")" + "\n" +
       "Build: `" + Build.FINGERPRINT + "`\n" +
-      "Package: " + UI.getAppContext().getPackageName();
+      "Package: " + UI.getAppContext().getPackageName() + "\n" +
+      "Locale: " + locale + (!locale.equals(appLocale) ? " (app: " + appLocale + ")" : "");
     String installerName = U.getInstallerPackageName();
     if (!StringUtils.isEmpty(installerName)) {
       metadata += "\nInstaller: " + (U.VENDOR_GOOGLE_PLAY.equals(installerName) ? "Google Play" : installerName);
     }
     String fingerprint = U.getApkFingerprint("SHA1");
     if (!StringUtils.isEmpty(fingerprint)) {
-      metadata += "\nFingerprint: `" + fingerprint + "`";
+      metadata += "\nAPK Fingerprint: `" + fingerprint + "`";
     }
     return metadata;
   }
@@ -2548,42 +2508,27 @@ public class U {
   }
 
   public static void notifyItemsReplaced (final RecyclerView.Adapter<?> adapter, final int oldItemCount) {
-    int newItemCount = adapter.getItemCount();
-    if (oldItemCount == newItemCount) {
-      if (oldItemCount != 0) {
-        adapter.notifyItemRangeChanged(0, newItemCount);
-      }
-    } else if (oldItemCount == 0) {
-      adapter.notifyItemRangeInserted(0, newItemCount);
-    } else if (newItemCount == 0) {
-      adapter.notifyItemRangeRemoved(0, oldItemCount);
-    } else {
-      adapter.notifyItemRangeRemoved(0, oldItemCount);
-      adapter.notifyItemRangeRemoved(0, newItemCount);
-    }
-    /* else if (oldItemCount > newItemCount) {
-      adapter.notifyItemRangeChanged(0, newItemCount);
-      adapter.notifyItemRangeRemoved(newItemCount, oldItemCount - newItemCount);
-    } else {
-      adapter.notifyItemRangeChanged(0, oldItemCount);
-      adapter.notifyItemRangeRemoved(oldItemCount, newItemCount - oldItemCount);
-    }*/
+    notifyItemsReplaced(adapter, oldItemCount, 0);
   }
 
   public static void notifyItemsReplaced (final RecyclerView.Adapter<?> adapter, final int oldItemCount, final int headerItemCount) {
     int newItemCount = adapter.getItemCount();
-    int changedItemCount = Math.max(0, newItemCount - headerItemCount);
+    if (newItemCount < headerItemCount)
+      throw new IllegalStateException();
     if (oldItemCount == newItemCount) {
       if (oldItemCount != 0) {
-        adapter.notifyItemRangeChanged(headerItemCount, changedItemCount);
+        adapter.notifyItemRangeChanged(headerItemCount, newItemCount - headerItemCount);
       }
     } else if (oldItemCount == 0) {
       adapter.notifyItemRangeInserted(0, newItemCount);
     } else if (newItemCount == 0) {
       adapter.notifyItemRangeRemoved(0, oldItemCount);
     } else {
-      adapter.notifyItemRangeRemoved(Math.min(headerItemCount, changedItemCount), oldItemCount);
-      adapter.notifyItemRangeInserted(headerItemCount, changedItemCount);
+      // note: do not call notifyItemRangeChanged here
+      if (oldItemCount > headerItemCount) {
+        adapter.notifyItemRangeRemoved(headerItemCount, oldItemCount - headerItemCount);
+      }
+      adapter.notifyItemRangeInserted(headerItemCount, newItemCount - headerItemCount);
     }
   }
 
@@ -2689,13 +2634,6 @@ public class U {
     }
     if (decoder != null) { try { decoder.recycle(); } catch (Throwable ignored) { } }
     return bitmap;
-  }
-
-  public static boolean checkLocationPermission (Context context) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      return context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-    }
-    return true;
   }
 
   // Array utils
@@ -3535,22 +3473,6 @@ public class U {
 
   // ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION opened, but the permission is still not granted. Ignore until the app restarts.
 
-  public static boolean canManageStorage () {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-      return Environment.isExternalStorageLegacy() || Environment.isExternalStorageManager();
-    }
-    return true; // Q allows for requestExternalStorage
-  }
-
-  @TargetApi(Build.VERSION_CODES.R)
-  public static void requestManageStorage (Context context) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-      Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-      intent.setData(Uri.parse("package:" + context.getPackageName()));
-      ((Activity) context).startActivityForResult(intent, Intents.ACTIVITY_RESULT_MANAGE_STORAGE);
-    }
-  }
-
   public static boolean canReadFile (String url) {
     try {
       return new File(url).canRead();
@@ -3626,5 +3548,13 @@ public class U {
       }
     }
     return null;
+  }
+
+  public static boolean setRect (RectF rectF, float left, float top, float right, float bottom) {
+    if (rectF.left != left || rectF.top != top || rectF.right != right || rectF.bottom != bottom) {
+      rectF.set(left, top, right, bottom);
+      return true;
+    }
+    return false;
   }
 }

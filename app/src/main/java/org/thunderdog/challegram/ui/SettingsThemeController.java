@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,10 +14,8 @@
  */
 package org.thunderdog.challegram.ui;
 
-import android.Manifest;
 import android.app.TimePickerDialog;
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorManager;
 import android.os.Build;
@@ -33,6 +31,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.luckycatlabs.sunrisesunset.SunriseSunsetCalculator;
 
+import org.drinkless.td.libcore.telegram.TdApi;
 import org.thunderdog.challegram.BuildConfig;
 import org.thunderdog.challegram.Log;
 import org.thunderdog.challegram.R;
@@ -42,6 +41,7 @@ import org.thunderdog.challegram.component.user.RemoveHelper;
 import org.thunderdog.challegram.config.Config;
 import org.thunderdog.challegram.config.Device;
 import org.thunderdog.challegram.core.Lang;
+import org.thunderdog.challegram.data.TD;
 import org.thunderdog.challegram.data.TGReaction;
 import org.thunderdog.challegram.helper.LocationHelper;
 import org.thunderdog.challegram.navigation.SettingsWrapBuilder;
@@ -64,6 +64,7 @@ import org.thunderdog.challegram.util.AppUpdater;
 import org.thunderdog.challegram.util.DrawableModifier;
 import org.thunderdog.challegram.util.EmojiModifier;
 import org.thunderdog.challegram.util.ReactionModifier;
+import org.thunderdog.challegram.util.Permissions;
 import org.thunderdog.challegram.util.StringList;
 import org.thunderdog.challegram.v.CustomRecyclerView;
 import org.thunderdog.challegram.widget.RadioView;
@@ -171,22 +172,30 @@ public class SettingsThemeController extends RecyclerViewController<SettingsThem
             break;
           }
           case R.id.btn_quick_reaction: {
-            final String[] reactions = Settings.instance().getQuickReactions();
+            final String[] reactions = Settings.instance().getQuickReactions(tdlib);
+            tdlib.ensureReactionsAvailable(reactions, reactionsUpdated -> {
+              if (reactionsUpdated) {
+                runOnUiThreadOptional(() -> {
+                  updateQuickReaction();
+                });
+              }
+            });
             StringBuilder stringBuilder = new StringBuilder();
             if (reactions.length > 0) {
-              final TGReaction[] tgReactions = new TGReaction[reactions.length];
-              for (int a = 0; a < reactions.length; a++) {
-                final TGReaction tgReaction = tdlib.getReaction(reactions[a]);
-                tgReactions[a] = tgReaction;
+              final List<TGReaction> tgReactions = new ArrayList<>(reactions.length);
+              for (String reactionKey : reactions) {
+                TdApi.ReactionType reactionType = TD.toReactionType(reactionKey);
+                final TGReaction tgReaction = tdlib.getReaction(reactionType, false);
                 if (tgReaction != null) {
+                  tgReactions.add(tgReaction);
                   if (stringBuilder.length() > 0) {
                     stringBuilder.append(Lang.getConcatSeparator());
                   }
-                  stringBuilder.append(tgReaction.getReaction().title);
+                  stringBuilder.append(tgReaction.getTitle());
                 }
               }
-              v.setDrawModifier(new ReactionModifier(v.getComplexReceiver(), tgReactions));
-              v.setData(stringBuilder);
+              v.setDrawModifier(new ReactionModifier(v.getComplexReceiver(), tgReactions.toArray(new TGReaction[0])));
+              v.setData(stringBuilder.toString());
             } else {
               v.setDrawModifier(null);
               v.setData(R.string.QuickReactionDisabled);
@@ -543,6 +552,8 @@ public class SettingsThemeController extends RecyclerViewController<SettingsThem
           items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
           items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT, R.id.btn_icon, 0, R.string.Icons).setDrawModifier(new DrawableModifier(R.drawable.baseline_star_20, R.drawable.baseline_account_balance_wallet_20, R.drawable.baseline_location_on_20, R.drawable.baseline_favorite_20)));
         }
+      }
+      if (!tdlib.account().isDebug() || BuildConfig.DEBUG) {
         items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
         items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT, R.id.btn_quick_reaction, 0, R.string.QuickReaction));
       }
@@ -1154,6 +1165,7 @@ public class SettingsThemeController extends RecyclerViewController<SettingsThem
         EditEnabledReactionsController c = new EditEnabledReactionsController(context, tdlib);
         c.setArguments(new EditEnabledReactionsController.Args(null, EditEnabledReactionsController.TYPE_QUICK_REACTION));
         navigateTo(c);
+        break;
       }
       case R.id.btn_emoji: {
         SettingsCloudEmojiController c = new SettingsCloudEmojiController(context, tdlib);
@@ -1586,13 +1598,11 @@ public class SettingsThemeController extends RecyclerViewController<SettingsThem
         break;
       }
       case R.id.btn_chatBackground: {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-          if (context().checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            context().requestCustomPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, (code, granted) -> openWallpaperSetup());
-            return;
-          }
+        if (!context().permissions().requestReadExternalStorage(Permissions.ReadType.IMAGES, grantType ->
+          openWallpaperSetup()
+        )) {
+          openWallpaperSetup();
         }
-        openWallpaperSetup();
         break;
       }
       case R.id.btn_previewChat: {

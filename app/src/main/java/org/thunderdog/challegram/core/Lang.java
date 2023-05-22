@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,6 +51,7 @@ import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.unsorted.Settings;
 import org.thunderdog.challegram.util.CustomTypefaceSpan;
+import org.thunderdog.challegram.util.StringList;
 import org.thunderdog.challegram.util.text.Text;
 
 import java.lang.annotation.Retention;
@@ -678,7 +679,7 @@ public class Lang {
 
   private static String systemTime (long timeInMillis, int style, String fallbackPattern) {
     try {
-      String language = dateFormatLocale().getLanguage();
+      /*String language = dateFormatLocale().getLanguage();
       if (language.equals(Locale.getDefault().getLanguage())) {
         Formatter f = new Formatter(new StringBuilder(50), dateFormatLocale());
         return android.text.format.DateUtils.formatDateRange(UI.getAppContext(), f, timeInMillis, timeInMillis, android.text.format.DateUtils.FORMAT_SHOW_TIME).toString();
@@ -690,7 +691,7 @@ public class Lang {
         try {
           return android.icu.text.DateFormat.getTimeInstance(translateStyle(style, true), dateFormatLocale()).format(DateUtils.dateInstance(timeInMillis));
         } catch (Throwable ignored) { }
-      }
+      }*/
       return java.text.DateFormat.getTimeInstance(translateStyle(style, false), dateFormatLocale()).format(DateUtils.dateInstance(timeInMillis));
     } catch (Throwable ignored) {
       return dateFormat(fallbackPattern, timeInMillis);
@@ -1055,7 +1056,7 @@ public class Lang {
       case TdApi.MessageChatDeleteMember.CONSTRUCTOR:
       case TdApi.MessageChatDeletePhoto.CONSTRUCTOR:
       case TdApi.MessageChatJoinByLink.CONSTRUCTOR:
-      case TdApi.MessageChatSetTtl.CONSTRUCTOR:
+      case TdApi.MessageChatSetMessageAutoDeleteTime.CONSTRUCTOR:
       case TdApi.MessageChatUpgradeFrom.CONSTRUCTOR:
       case TdApi.MessageChatUpgradeTo.CONSTRUCTOR:
       case TdApi.MessageContactRegistered.CONSTRUCTOR:
@@ -1737,6 +1738,10 @@ public class Lang {
 
   public static String getXofY (int x, int y) {
     return getString(R.string.XofY, counter(R.string.XofY, x), counter(R.string.XofY, y));
+  }
+
+  public static String getXofApproximateY (int x, int y) {
+    return getString(R.string.XofApproximateY, counter(R.string.XofApproximateY, x), counter(R.string.XofApproximateY, y));
   }
 
   public static CharSequence pluralMembers (int members, int online, boolean isChannel) {
@@ -3749,5 +3754,72 @@ public class Lang {
     if (isDebug)
       return "[DEBUG] " + text;
     return text;
+  }
+
+
+  private static String[] supportedLanguagesForTranslateFiltred;
+
+  public static String[] getSupportedLanguagesForTranslate () {
+    if (supportedLanguagesForTranslateFiltred == null) {
+      final String[] supportedLanguagesForTranslate = new String[] {
+        "af", "sq", "am", "ar", "hy", "az", "eu", "be", "bn", "bs", "bg", "ca", "ceb", "zh-CN",
+        "zh", "zh-Hans", "zh-TW", "zh-Hant", "co", "hr", "cs", "da", "nl", "en", "eo", "et", "fi",
+        "fr", "fy", "gl", "ka", "de", "el", "gu", "ht", "ha", "haw", "he", "iw", "hi", "hmn", "hu",
+        "is", "ig", "id", "in", "ga", "it", "ja", "jv", "kn", "kk", "km", "rw", "ko", "ku", "ky",
+        "lo", "la", "lv", "lt", "lb", "mk", "mg", "ms", "ml", "mt", "mi", "mr", "mn", "my", "ne",
+        "no", "ny", "or", "ps", "fa", "pl", "pt", "pa", "ro", "ru", "sm", "gd", "sr", "st", "sn",
+        "sd", "si", "sk", "sl", "so", "es", "su", "sw", "sv", "tl", "tg", "ta", "tt", "te", "th",
+        "tr", "tk", "uk", "ur", "ug", "uz", "vi", "cy", "xh", "yi", "ji", "yo", "zu"
+      };
+
+      StringList list = new StringList(supportedLanguagesForTranslate.length);
+      for (String lang: supportedLanguagesForTranslate) {
+        if (Lang.getLanguageName(lang, null) != null) {
+          list.append(lang);
+        }
+      }
+      supportedLanguagesForTranslateFiltred = list.get();
+    }
+    return supportedLanguagesForTranslateFiltred;
+  }
+
+  public static @Nullable String getDefaultLanguageToTranslateV2 (@Nullable String sourceLanguage) {
+    ArrayList<String> recents = Settings.instance().getTranslateLanguageRecents();
+    for (String lang: recents) {
+      if (!StringUtils.equalsOrBothEmpty(lang, sourceLanguage)) {
+        return lang;
+      }
+    }
+    String appLanguage = Settings.instance().getLanguage().packInfo.pluralCode;
+    if (!StringUtils.equalsOrBothEmpty(appLanguage, sourceLanguage)) {
+      return appLanguage;
+    }
+
+    String systemLanguage = Locale.getDefault().getLanguage();
+    if (!StringUtils.equalsOrBothEmpty(systemLanguage, sourceLanguage)) {
+      return systemLanguage;
+    }
+
+    String[] notTranslatableLanguages = Settings.instance().getAllNotTranslatableLanguages();
+    for (String lang: notTranslatableLanguages) {
+      if (!StringUtils.equalsOrBothEmpty(lang, sourceLanguage)) {
+        return lang;
+      }
+    }
+
+    return null;
+  }
+
+  public static String getLanguageName (String code, String defaultName) {
+    if (code == null) {
+      return defaultName;
+    }
+
+    TdApi.LanguagePackInfo info = new TdApi.LanguagePackInfo();
+    if (fixLanguageCode(code, info)) {
+      return info.name;
+    }
+
+    return defaultName;
   }
 }

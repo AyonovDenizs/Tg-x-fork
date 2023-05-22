@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -361,8 +361,8 @@ public class MediaLocationPlaceView extends FrameLayoutFix implements AttachDele
 
   @Override
   protected void onDraw (Canvas c) {
-    int cx = receiver.getCenterX();
-    int cy = receiver.getCenterY();
+    int cx = receiver.centerX();
+    int cy = receiver.centerY();
 
     float alpha = (flags & FLAG_FADED) != 0 ? .6f : 1f;
 

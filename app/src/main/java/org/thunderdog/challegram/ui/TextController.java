@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -174,7 +174,7 @@ public class TextController extends ViewController<TextController.Arguments> imp
     switch (id) {
       case R.id.btn_openLink: {
         File file = new File(filePath);
-        Intents.openFile(file, mimeType);
+        Intents.openFile(context, file, mimeType);
         break;
       }
       case R.id.btn_share: {

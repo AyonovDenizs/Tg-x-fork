@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -224,7 +224,7 @@ public class ChatsRecyclerView extends CustomRecyclerView implements ClickHelper
         break;
       View view = manager.findViewByPosition(updated);
       if (view instanceof ChatView && ((ChatView) view).getChatId() == adapter.getChatAt(updated).getChatId()) {
-        ((ChatView) view).updateOnline();
+        // ((ChatView) view).updateOnline();
         view.invalidate();
       } else {
         adapter.notifyItemChanged(updated);

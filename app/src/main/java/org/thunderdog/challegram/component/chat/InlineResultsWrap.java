@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -855,7 +855,7 @@ public class InlineResultsWrap extends FrameLayoutFix implements View.OnClickLis
           UI.post(() -> {
             if (!isCancelled()) {
               setItems(null);
-              delegate.tdlib().ui().openChat(c, chatId, new TdlibUi.ChatOpenParameters().keepStack().shareItem(new TGBotStart(delegate.tdlib().chatUserId(chatId), button.data(), false)));
+              delegate.tdlib().ui().openChat(c, chatId, new TdlibUi.ChatOpenParameters().keepStack().shareItem(new TGBotStart(delegate.tdlib().chatUserId(chatId), button.botStartParameter(), false)));
             }
           });
         } else {
@@ -939,13 +939,13 @@ public class InlineResultsWrap extends FrameLayoutFix implements View.OnClickLis
   }
 
   @Override
-  public boolean onStickerClick (StickerSmallView view, View clickView, TGStickerObj sticker, boolean isMenuClick, boolean forceDisableNotification, @Nullable TdApi.MessageSchedulingState schedulingState) {
+  public boolean onStickerClick (StickerSmallView view, View clickView, TGStickerObj sticker, boolean isMenuClick, TdApi.MessageSendOptions sendOptions) {
     Object tag = view.getTag();
     if (tag instanceof InlineResult) {
       InlineResult<?> result = (InlineResult<?>) tag;
       MessagesController c = findMessagesController();
       if (c != null) {
-        c.sendInlineQueryResult(result.getQueryId(), result.getId(), true, true, forceDisableNotification, schedulingState);
+        c.sendInlineQueryResult(result.getQueryId(), result.getId(), true, true, sendOptions);
       }
     }
     return false;

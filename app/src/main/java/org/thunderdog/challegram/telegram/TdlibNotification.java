@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -88,11 +88,11 @@ public class TdlibNotification implements Comparable<TdlibNotification> {
   }
 
   public boolean isEdited () {
-    return BitwiseUtils.getFlag(this.flags, FLAG_EDITED);
+    return BitwiseUtils.hasFlag(this.flags, FLAG_EDITED);
   }
 
   public boolean isEditedVisible () {
-    return BitwiseUtils.getFlag(this.flags, FLAG_EDITED_VISIBLE);
+    return BitwiseUtils.hasFlag(this.flags, FLAG_EDITED_VISIBLE);
   }
 
   public static CharSequence wrapEdited (CharSequence content, boolean isEdited, boolean isEditedVisible) {
@@ -165,7 +165,7 @@ public class TdlibNotification implements Comparable<TdlibNotification> {
       case TdApi.NotificationTypeNewMessage.CONSTRUCTOR:
         return ((TdApi.NotificationTypeNewMessage) notification.type).message.content.getConstructor() == TdApi.MessagePinMessage.CONSTRUCTOR;
       case TdApi.NotificationTypeNewPushMessage.CONSTRUCTOR:
-        return TD.isPinnedMessagePushType(((TdApi.NotificationTypeNewPushMessage) notification.type).content);
+        return Td.isPinned(((TdApi.NotificationTypeNewPushMessage) notification.type).content);
       case TdApi.NotificationTypeNewCall.CONSTRUCTOR:
       case TdApi.NotificationTypeNewSecretChat.CONSTRUCTOR:
         break;
@@ -177,7 +177,7 @@ public class TdlibNotification implements Comparable<TdlibNotification> {
     switch (notification.type.getConstructor()) {
       case TdApi.NotificationTypeNewMessage.CONSTRUCTOR: {
         TdApi.Message message = ((TdApi.NotificationTypeNewMessage) notification.type).message;
-        return !TD.isSecret(message) && ((TdApi.NotificationTypeNewMessage) notification.type).message.ttl == 0;
+        return !TD.isSecret(message) && ((TdApi.NotificationTypeNewMessage) notification.type).message.selfDestructTime == 0;
       }
       case TdApi.NotificationTypeNewPushMessage.CONSTRUCTOR: {
         TdApi.PushMessageContent push = ((TdApi.NotificationTypeNewPushMessage) notification.type).content;
@@ -285,10 +285,12 @@ public class TdlibNotification implements Comparable<TdlibNotification> {
 
   public String getContentText () {
     switch (notification.type.getConstructor()) {
-      case TdApi.NotificationTypeNewMessage.CONSTRUCTOR:
-        return TD.getTextFromMessage(((TdApi.NotificationTypeNewMessage) notification.type).message);
+      case TdApi.NotificationTypeNewMessage.CONSTRUCTOR: {
+        TdApi.FormattedText text = Td.textOrCaption(((TdApi.NotificationTypeNewMessage) notification.type).message.content);
+        return Td.getText(text);
+      }
       case TdApi.NotificationTypeNewPushMessage.CONSTRUCTOR:
-        return TD.getTextFromMessage(((TdApi.NotificationTypeNewPushMessage) notification.type).content);
+        return Td.getText(((TdApi.NotificationTypeNewPushMessage) notification.type).content);
       case TdApi.NotificationTypeNewCall.CONSTRUCTOR:
       case TdApi.NotificationTypeNewSecretChat.CONSTRUCTOR:
         break;
@@ -314,7 +316,7 @@ public class TdlibNotification implements Comparable<TdlibNotification> {
     boolean isForward = false;
     for (TdlibNotification notification : mergedList) {
       TdApi.Message message = notification.findMessage();
-      if (ChatId.isSecret(group.getChatId()) && message.ttl != 0) {
+      if (ChatId.isSecret(group.getChatId()) && message.selfDestructTime != 0) {
         return Lang.plural(R.string.xNewMessages, mergedList.size());
       }
       if (message.forwardInfo != null) {
@@ -340,7 +342,7 @@ public class TdlibNotification implements Comparable<TdlibNotification> {
       case TdApi.NotificationTypeNewMessage.CONSTRUCTOR: {
         TdApi.Message message = ((TdApi.NotificationTypeNewMessage) notification.type).message;
 
-        if (ChatId.isSecret(group.getChatId()) && message.ttl != 0) {
+        if (ChatId.isSecret(group.getChatId()) && message.selfDestructTime != 0) {
           return Lang.getString(R.string.YouHaveNewMessage);
         }
 
@@ -450,13 +452,13 @@ public class TdlibNotification implements Comparable<TdlibNotification> {
     LongSparseArray<TdlibEmojiManager.Entry> customEmojis = new LongSparseArray<>();
     LongSet awaitingCustomEmojiIds = new LongSet();
     Filter<TdlibEmojiManager.Entry> filter = (entry) ->
-      !entry.isNotFound() && entry.sticker != null && entry.sticker.thumbnail != null;
-    TdlibEmojiManager.Watcher watcher = (context, customEmojiId, entry) -> {
+      !entry.isNotFound() && entry.value != null && entry.value.thumbnail != null;
+    TdlibEmojiManager.Watcher watcher = (context, entry) -> {
       synchronized (customEmojis) {
         if (filter.accept(entry)) {
-          customEmojis.put(customEmojiId, entry);
+          customEmojis.put(entry.customEmojiId, entry);
         }
-        awaitingCustomEmojiIds.remove(customEmojiId);
+        awaitingCustomEmojiIds.remove(entry.customEmojiId);
       }
       customEmojiLatch.countDown();
     };
@@ -500,10 +502,10 @@ public class TdlibNotification implements Comparable<TdlibNotification> {
       for (int i = 0; i < customEmojis.size(); i++) {
         TdlibEmojiManager.Entry entry = customEmojis.valueAt(i);
         //noinspection ConstantConditions
-        int thumbnailFileId = entry.sticker.thumbnail.file.id;
+        int thumbnailFileId = entry.value.thumbnail.file.id;
         ImageFile thumbnailFile = files.get(thumbnailFileId);
         if (thumbnailFile == null) {
-          thumbnailFile = TD.toImageFile(tdlib, entry.sticker.thumbnail);
+          thumbnailFile = TD.toImageFile(tdlib, entry.value.thumbnail);
           if (thumbnailFile != null) {
             thumbnailFile.setSize(Screen.dp(15f));
             thumbnailFile.setNoBlur();

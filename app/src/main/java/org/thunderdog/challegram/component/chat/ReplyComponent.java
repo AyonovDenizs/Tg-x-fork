@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -45,6 +45,7 @@ import org.thunderdog.challegram.telegram.Tdlib;
 import org.thunderdog.challegram.telegram.TdlibSender;
 import org.thunderdog.challegram.theme.Theme;
 import org.thunderdog.challegram.theme.ThemeColorId;
+import org.thunderdog.challegram.tool.DrawAlgorithms;
 import org.thunderdog.challegram.tool.Paints;
 import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.UI;
@@ -52,7 +53,6 @@ import org.thunderdog.challegram.util.text.Text;
 import org.thunderdog.challegram.util.text.TextColorSet;
 import org.thunderdog.challegram.util.text.TextColorSets;
 import org.thunderdog.challegram.util.text.TextEntity;
-import org.thunderdog.challegram.util.text.TextMedia;
 import org.thunderdog.challegram.util.text.TextStyleProvider;
 
 import me.vkryl.android.util.SingleViewProvider;
@@ -72,8 +72,6 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
   private final Tdlib tdlib;
   private final @Nullable TGMessage parent;
 
-  private long chatId;
-  private long messageId;
   private TdApi.MessageSender sender;
   private String senderName;
   private @ThemeColorId int nameColorId;
@@ -86,6 +84,7 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
   private ImageFile miniThumbnail;
   private ImageFile preview;
   private Path contour;
+  private boolean hasSpoiler;
   private boolean previewCircle;
 
   private Text trimmedTitle, trimmedContent;
@@ -106,9 +105,7 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
     }
     this.tdlib = message.tdlib();
     this.parent = message;
-    TdApi.Message msg = message.getMessage();
-    this.chatId = msg.chatId;
-    this.messageId = msg.replyToMessageId;
+    this.translatedText = message.getTranslatedText();
     /*TODO optimize displaying for channels, where you can reply to yourself only?
        if (channelTitle != null) {
       flags |= FLAG_CHANNEL;
@@ -226,6 +223,7 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
   private void buildContent () {
     int width = getContentWidth();
 
+    //noinspection UnsafeOptInUsageError
     Text trimmedContent = new Text.Builder(content != null ? content.buildText(true) : Lang.getString(R.string.LoadingMessage), width, isMessageComponent() ? TGMessage.getTextStyleProvider() : getTextStyleProvider(), getContentColorSet())
       .singleLine()
       .textFlags(Text.FLAG_CUSTOM_LONG_PRESS)
@@ -275,7 +273,7 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
 
   public void requestPreview (DoubleImageReceiver receiver, ComplexReceiver textMediaReceiver) {
     int imageHeight = isMessageComponent() ? mHeight : height;
-    receiver.setRadius(previewCircle ? imageHeight / 2 : 0);
+    receiver.setRadius(previewCircle ? imageHeight / 2f : 0);
     receiver.requestFile(miniThumbnail, preview);
     requestTextContent(textMediaReceiver);
   }
@@ -352,7 +350,7 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
         }
       };
     }
-    if (BitwiseUtils.getFlag(flags, FLAG_ALLOW_TOUCH_EVENTS)) {
+    if (BitwiseUtils.hasFlag(flags, FLAG_ALLOW_TOUCH_EVENTS)) {
       return TextColorSets.Regular.NORMAL;
     }
     return new TextColorSet() {
@@ -414,6 +412,11 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
       if (Config.DEBUG_STICKER_OUTLINES) {
         receiver.drawPlaceholderContour(c, contour);
       }
+      if (hasSpoiler) {
+        float radius = Theme.getBubbleMergeRadius();
+        DrawAlgorithms.drawRoundRect(c, radius, receiver.getLeft(), receiver.getTop(), receiver.getRight(), receiver.getBottom(), Paints.fillingPaint(Theme.getColor(R.id.theme_color_spoilerMediaOverlay)));
+        DrawAlgorithms.drawParticles(c, radius, receiver.getLeft(), receiver.getTop(), receiver.getRight(), receiver.getBottom(), 1f);
+      }
       ViewSupport.restoreClipPath(c, restoreToCount);
     }
 
@@ -433,7 +436,7 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
       } else {
         rectF.set(startX, startY, startX + lineWidth, startY + mHeight);
       }
-      c.drawRoundRect(rectF, lineWidth / 2, lineWidth / 2, Paints.fillingPaint(isWhite ? parent.getBubbleMediaReplyTextColor() : isOutBubble ? Theme.getColor(R.id.theme_color_bubbleOut_chatVerticalLine) : nameColorId != 0 ? Theme.getColor(nameColorId) : Theme.getColor(R.id.theme_color_messageVerticalLine)));
+      c.drawRoundRect(rectF, lineWidth / 2f, lineWidth / 2f, Paints.fillingPaint(isWhite ? parent.getBubbleMediaReplyTextColor() : isOutBubble ? Theme.getColor(R.id.theme_color_bubbleOut_chatVerticalLine) : nameColorId != 0 ? Theme.getColor(nameColorId) : Theme.getColor(R.id.theme_color_messageVerticalLine)));
 
       return;
     }
@@ -449,7 +452,7 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
     }
 
     Paints.getRectF().set(startX, startY, startX + lineWidth, startY + height);
-    c.drawRoundRect(Paints.getRectF(), lineWidth / 2, lineWidth / 2, Paints.fillingPaint(Theme.getColor(R.id.theme_color_messageVerticalLine)));
+    c.drawRoundRect(Paints.getRectF(), lineWidth / 2f, lineWidth / 2f, Paints.fillingPaint(Theme.getColor(R.id.theme_color_messageVerticalLine)));
   }
 
   // Data workers
@@ -500,26 +503,35 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
       preview = null;
     }
 
-    setContent(title, content, null, preview, image, false, false);
+    setContent(title, content, false, null, preview, image, false, false);
   }
 
-  private TdApi.Function<?> retryFunction;
+  private @Nullable TdApi.Function<TdApi.Message> retryFunction;
 
   public void load () {
-    if (parent != null) {
-      TdApi.Message foundMessage = parent.manager().getAdapter().tryFindMessage(chatId, messageId);
+    if (parent == null)
+      return;
+    TdApi.Message message = parent.getMessage();
+    if (message.chatId == message.replyInChatId && message.replyToMessageId != 0) {
+      TdApi.Message foundMessage = parent.manager().getAdapter().tryFindMessage(message.replyInChatId, message.replyToMessageId);
       if (foundMessage != null) {
         setMessage(foundMessage, false, true);
         return;
       }
     }
     flags |= FLAG_LOADING;
-    if (isMessageComponent()) {
-      retryFunction = new TdApi.GetMessage(chatId, parent.getMessage().replyToMessageId);
-      tdlib.client().send(new TdApi.GetRepliedMessage(chatId, parent.getId()), this);
+    final TdApi.Function<TdApi.Message> function;
+    if (message.forwardInfo != null && message.forwardInfo.fromChatId != 0 && message.forwardInfo.fromMessageId != 0 && !parent.isRepliesChat()) {
+      function = new TdApi.GetRepliedMessage(message.forwardInfo.fromChatId, message.forwardInfo.fromMessageId);
     } else {
-      tdlib.client().send(new TdApi.GetMessage(chatId, messageId), this);
+      function = new TdApi.GetRepliedMessage(message.chatId, message.id);
     }
+    if (message.replyInChatId != 0 && message.replyToMessageId != 0) {
+      retryFunction = new TdApi.GetMessage(message.replyInChatId, message.replyToMessageId);
+    } else {
+      retryFunction = null;
+    }
+    tdlib.send(function, this);
   }
 
   private void parseContent (final TdApi.Message msg, final boolean forceRequestImage) {
@@ -542,14 +554,15 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
     });
   }
 
-  private void setContent (final String title, final TD.ContentPreview content, final Path contour, final ImageFile miniThumbnail, final ImageFile preview, final boolean previewCircle, final boolean forceRequest) {
+  private void setContent (final String title, final TD.ContentPreview content, boolean hasSpoiler, final Path contour, final ImageFile miniThumbnail, final ImageFile preview, final boolean previewCircle, final boolean forceRequest) {
     Background.instance().post(() -> {
       ReplyComponent.this.currentMessage = null;
-      ReplyComponent.this.content = content;
+      ReplyComponent.this.content = new TD.ContentPreview(translatedText, content);
       setTitleImpl(title);
       ReplyComponent.this.contour = contour;
       ReplyComponent.this.miniThumbnail = miniThumbnail;
       ReplyComponent.this.preview = preview;
+      ReplyComponent.this.hasSpoiler = hasSpoiler;
       ReplyComponent.this.previewCircle = previewCircle;
       buildLayout();
       invalidate(!isMessageComponent() || preview != null || miniThumbnail != null || forceRequest);
@@ -571,9 +584,20 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
     return false;
   }
 
+  private TdApi.FormattedText translatedText;
+
+  public boolean replaceMessageTranslation (long messageId, TdApi.FormattedText translation) {
+    if (currentMessage != null && currentMessage.id == messageId) {
+      translatedText = translation;
+      parseContent(currentMessage, true);
+      return true;
+    }
+    return false;
+  }
+
   public boolean deleteMessageContent (long messageId) {
     if (currentMessage != null && currentMessage.id == messageId) {
-      setContent(Lang.getString(R.string.Error), new TD.ContentPreview(null, R.string.DeletedMessage), null, null, null, false,true);
+      setContent(Lang.getString(R.string.Error), new TD.ContentPreview(null, R.string.DeletedMessage), false, null, null, null, false, true);
       return true;
     }
     return false;
@@ -588,21 +612,25 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
     } else {
       nameColorId = ThemeColorId.NONE;
     }
-    boolean isPrivate = msg.ttl != 0;
+    boolean isPrivate = msg.selfDestructTime != 0;
     Path contour = null;
     TdApi.Thumbnail thumbnail = null;
     TdApi.PhotoSize photoSize = null;
     TdApi.Minithumbnail miniThumbnail = null;
     boolean previewCircle = false;
+    boolean hasSpoiler = false;
+    //noinspection SwitchIntDef
     switch (msg.content.getConstructor()) {
       case TdApi.MessagePhoto.CONSTRUCTOR: {
-        TdApi.Photo photo = ((TdApi.MessagePhoto) msg.content).photo;
+        TdApi.MessagePhoto messagePhoto = (TdApi.MessagePhoto) msg.content;
+        TdApi.Photo photo = messagePhoto.photo;
         photoSize = MediaWrapper.pickDisplaySize(tdlib, photo.sizes, msg.chatId);
         TdApi.PhotoSize smallest = Td.findSmallest(photo);
         if (smallest != null && smallest != photoSize) {
           thumbnail = TD.toThumbnail(photoSize);
         }
         miniThumbnail = photo.minithumbnail;
+        hasSpoiler = messagePhoto.hasSpoiler;
         break;
       }
       case TdApi.MessageChatChangePhoto.CONSTRUCTOR: {
@@ -632,18 +660,22 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
         break;
       }
       case TdApi.MessageVideo.CONSTRUCTOR: {
-        TdApi.Video video = ((TdApi.MessageVideo) msg.content).video;
+        TdApi.MessageVideo messageVideo = (TdApi.MessageVideo) msg.content;
+        TdApi.Video video = messageVideo.video;
         if (video == null) {
           return;
         }
         miniThumbnail = video.minithumbnail;
         thumbnail = video.thumbnail;
+        hasSpoiler = messageVideo.hasSpoiler;
         break;
       }
       case TdApi.MessageAnimation.CONSTRUCTOR: {
-        TdApi.Animation animation = ((TdApi.MessageAnimation) msg.content).animation;
+        TdApi.MessageAnimation messageAnimation = (TdApi.MessageAnimation) msg.content;
+        TdApi.Animation animation = messageAnimation.animation;
         miniThumbnail = animation.minithumbnail;
         thumbnail = animation.thumbnail;
+        hasSpoiler = messageAnimation.hasSpoiler;
         break;
       }
       case TdApi.MessageVideoNote.CONSTRUCTOR: {
@@ -697,7 +729,7 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
       if (webp) {
         preview.setWebp();
       }
-      if (isPrivate) {
+      if (isPrivate || hasSpoiler) {
         preview.setIsPrivate();
         preview.setNeedBlur();
       }
@@ -748,21 +780,22 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
       sender = msg.senderId;
       senderName = tdlib.isFromAnonymousGroupAdmin(msg) ? msg.authorSignature : null;
     }
-    String title = BitwiseUtils.getFlag(flags, FLAG_FORCE_TITLE) ? this.title :
+    String title = BitwiseUtils.hasFlag(flags, FLAG_FORCE_TITLE) ? this.title :
       sender == null ? senderName :
       StringUtils.isEmpty(senderName) ? tdlib.senderName(sender, isMessageComponent()) :
       Lang.getString(isChannel() ? R.string.format_channelAndSignature : R.string.format_chatAndSignature, tdlib.senderName(sender, isMessageComponent()), senderName);
     if (Thread.currentThread() == Background.instance().thread() || forceLocal) {
-      this.content = contentPreview;
+      this.content = new TD.ContentPreview(translatedText, contentPreview);
       setTitleImpl(title);
       this.miniThumbnail = miniPreview;
       this.contour = contour;
       this.preview = preview;
+      this.hasSpoiler = hasSpoiler;
       this.previewCircle = previewCircle;
       buildLayout();
       invalidate(forceRequestImage || !isMessageComponent() || miniPreview != null || preview != null);
     } else {
-      setContent(title, contentPreview, contour, miniPreview, preview, previewCircle, false);
+      setContent(title, contentPreview, hasSpoiler, contour, miniPreview, preview, previewCircle, false);
     }
   }
 
@@ -790,7 +823,7 @@ public class ReplyComponent implements Client.ResultHandler, Destroyable {
           tdlib.client().send(function, this);
           return;
         }
-        setContent(Lang.getString(R.string.Error), TD.errorCode(object) == 404 ? new TD.ContentPreview(null, R.string.DeletedMessage) : new TD.ContentPreview(null, 0, TD.toErrorString(object), true), null, null, null, false, false);
+        setContent(Lang.getString(R.string.Error), TD.errorCode(object) == 404 ? new TD.ContentPreview(null, R.string.DeletedMessage) : new TD.ContentPreview(null, 0, TD.toErrorString(object), true), false, null, null, null, false, false);
         currentMessage = null;
         break;
       }

@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1149,10 +1149,15 @@ public class TGInlineKeyboard {
             break;
           }
 
+          TdApi.MessageGame game = ((TdApi.MessageGame) parent.getMessage().content);
+          final String data = game.game.shortName;
+          if (!context.context.messagesController().callNonAnonymousProtection(context.context.getId() + game.game.id, context.context, (targetView, outRect) -> outRect.set(dirtyRect))) {
+            break;
+          }
+
           makeActive();
           showProgressDelayed();
 
-          final String data = ((TdApi.MessageGame) parent.getMessage().content).game.shortName;
           context.context.tdlib().client().send(new TdApi.GetCallbackQueryAnswer(parent.getChatId(), context.messageId, new TdApi.CallbackQueryPayloadGame(data)), getAnswerCallback(currentContextId, view, true));
           break;
         }
@@ -1217,7 +1222,7 @@ public class TGInlineKeyboard {
             context.context.tdlib().ui()
               .openUrl(context.context.controller(), open.url, openParameters(currentContextId, view)
               .disableInstantView()
-              .requireOpenPrompt(!open.skipConfirm));
+              .requireOpenPrompt(!open.skipConfirmation));
             break;
           }
           case TdApi.LoginUrlInfoRequestConfirmation.CONSTRUCTOR:

@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -52,6 +52,7 @@ import org.thunderdog.challegram.loader.ImageGalleryFile;
 import org.thunderdog.challegram.navigation.HeaderView;
 import org.thunderdog.challegram.navigation.Menu;
 import org.thunderdog.challegram.player.TGPlayerController;
+import org.thunderdog.challegram.telegram.RightId;
 import org.thunderdog.challegram.telegram.Tdlib;
 import org.thunderdog.challegram.tool.Intents;
 import org.thunderdog.challegram.tool.Screen;
@@ -59,6 +60,7 @@ import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.ui.ListItem;
 import org.thunderdog.challegram.ui.SettingsAdapter;
+import org.thunderdog.challegram.util.Permissions;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -101,12 +103,12 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
   @Override
   public void onMenuItemPressed (int id, View view) {
     if (id == R.id.menu_btn_more) {
-      showSystemPicker();
+      showSystemPicker(false);
     }
   }
 
   @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
-  private void showSystemPicker () {
+  private void showSystemPicker (boolean forceDownloads) {
     RunnableData<Set<Uri>> callback = uris -> {
       if (uris != null && !uris.isEmpty()) {
         List<String> files = new ArrayList<>(uris.size());
@@ -118,8 +120,8 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
             files.add(uri.toString());
           }
         }
-        mediaLayout.pickDateOrProceed((forceDisableNotification, schedulingState, disableMarkdown) ->
-          mediaLayout.sendFilesMixed(files, null, new TdApi.MessageSendOptions(forceDisableNotification, false, false, schedulingState), false)
+        mediaLayout.pickDateOrProceed((sendOptions, disableMarkdown) ->
+          mediaLayout.sendFilesMixed(mediaLayout.getTarget() != null ? mediaLayout.getTarget().getAttachButton() : null, files, null, sendOptions, false)
         );
       }
     };
@@ -172,15 +174,22 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
   private int initialItemsCount;
 
   private void buildCells () {
-    navigateToPath(null, null, false, null, null, null);
+    navigateToPath(null, null, null, false, null, null, null);
   }
 
-  private void navigateToPath (final String currentPath, final String parentPath, boolean isUpper, final InlineResultCommon data, Runnable onDone, Runnable onError) {
+  private void navigateToPath (final View view, final String currentPath, final String parentPath, boolean isUpper, final InlineResultCommon data, Runnable onDone, Runnable onError) {
     cancelCurrentLoadOperation();
 
     ArrayList<ListItem> items = new ArrayList<>();
 
     if (currentPath != null && !currentPath.isEmpty()) {
+      if (!isUpper && mediaLayout.getTarget() != null) {
+        boolean isMusic = KEY_MUSIC.equals(currentPath);
+        boolean res = mediaLayout.getTarget().showRestriction(view, isMusic ? RightId.SEND_AUDIO : RightId.SEND_DOCS);
+        if (res) {
+          return;
+        }
+      }
       LoadOperation operation;
       RunnableData<Runnable> before = null;
       if (KEY_GALLERY.equals(currentPath)) {
@@ -250,12 +259,13 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
     items.add(createItem(musicItem, R.id.btn_musicFiles));
 
     boolean addedDownloads = false;
-    if (U.canManageStorage()) {
+    boolean downloadsEmpty = false;
+    if (context.permissions().canManageStorage()) {
       try {
         File file = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
         if (file.exists() && file.isDirectory()) {
           File[] files = file.listFiles();
-          if (files != null && files.length > 0) {
+          if (files != null && !(downloadsEmpty = files.length == 0)) {
             InlineResultCommon common = createItem(context, tdlib, KEY_FOLDER + file.getPath(), R.drawable.baseline_file_download_24, Lang.getString(R.string.Downloads), Lang.plural(R.string.xFiles, files.length));
             items.add(createItem(common, file.isDirectory() ? R.id.btn_folder : R.id.btn_file));
             addedDownloads = true;
@@ -265,7 +275,7 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
         Log.e("Cannot add Downloads directory", t);
       }
     }
-    if (!addedDownloads && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+    if (!addedDownloads && !downloadsEmpty && context().permissions().canRequestDownloadsAccess()) {
       InlineResultCommon downloadsItem = createItem(context, tdlib, KEY_DOWNLOADS, R.drawable.baseline_file_download_24, Lang.getString(R.string.Downloads), Lang.getString(R.string.Files));
       items.add(createItem(downloadsItem, R.id.btn_downloads));
     }
@@ -1021,11 +1031,11 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
           } else {
             switch (result.getType()) {
               case InlineResult.TYPE_AUDIO: {
-                mediaLayout.sendMusic((MusicEntry) result.getTag());
+                mediaLayout.sendMusic(v, (MusicEntry) result.getTag());
                 break;
               }
               case InlineResult.TYPE_DOCUMENT: {
-                mediaLayout.sendFile(result.getId());
+                mediaLayout.sendFile(v, result.getId());
                 break;
               }
             }
@@ -1033,25 +1043,79 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
           break;
         }
         case R.id.btn_bucket: {
-          navigateInside(KEY_BUCKET, result);
+          navigateInside(v, KEY_BUCKET, result);
           break;
         }
         default: {
-          if (v.getId() == R.id.btn_internalStorage && !U.canManageStorage()) {
-            showSystemPicker();
-            return;
-          }
-
           String path = result.getId();
-          if (path != null) {
-            if (KEY_GALLERY.equals(path) || KEY_MUSIC.equals(path) || KEY_DOWNLOADS.equals(path) || KEY_BUCKET.equals(path) || path.startsWith(KEY_FOLDER)) {
-              navigateInside(path, result);
-            } else if (KEY_UPPER.equals(path)) {
-              navigateUpper();
+          boolean isMusic = KEY_MUSIC.equals(path);
+          if (mediaLayout.getTarget() != null) {
+            boolean res = mediaLayout.getTarget().showRestriction(v, isMusic ? RightId.SEND_AUDIO : RightId.SEND_DOCS);
+            if (res) {
+              return;
             }
           }
+          boolean isDownloads = KEY_DOWNLOADS.equals(path);
+          if (v.getId() == R.id.btn_internalStorage || isDownloads) {
+            if (!context.permissions().canManageStorage()) {
+              showSystemPicker(isDownloads);
+              return;
+            }
+            if (context.permissions().requestReadExternalStorage(Permissions.ReadType.ALL, grantType -> {
+              if (grantType != Permissions.GrantResult.ALL || !context.permissions().canManageStorage()) {
+                showSystemPicker(isDownloads);
+              } else {
+                navigateTo(v, result);
+              }
+            })) {
+              return;
+            }
+          }
+
+          if (path != null) {
+            switch (path) {
+              case KEY_GALLERY: {
+                if (context.permissions().requestReadExternalStorage(Permissions.ReadType.IMAGES_AND_VIDEOS, grantType -> {
+                  if (grantType == Permissions.GrantResult.ALL) {
+                    navigateTo(v, result);
+                  } else {
+                    // TODO 1-tap access to privacy settings?
+                    context.tooltipManager().builder(v).icon(R.drawable.baseline_warning_24).show(tdlib, R.string.MissingGalleryPermission).hideDelayed();
+                  }
+                })) {
+                  return;
+                }
+                break;
+              }
+              case KEY_MUSIC: {
+                if (context.permissions().requestReadExternalStorage(Permissions.ReadType.AUDIO, grantType -> {
+                  if (grantType == Permissions.GrantResult.ALL) {
+                    navigateTo(v, result);
+                  } else {
+                    // TODO 1-tap access to privacy settings?
+                    context.tooltipManager().builder(v).icon(R.drawable.baseline_warning_24).show(tdlib, R.string.MissingAudioPermission).hideDelayed();
+                  }
+                })) {
+                  return;
+                }
+                break;
+              }
+            }
+          }
+          navigateTo(v, result);
           break;
         }
+      }
+    }
+  }
+
+  private void navigateTo (View view, InlineResultCommon result) {
+    String path = result.getId();
+    if (path != null) {
+      if (KEY_GALLERY.equals(path) || KEY_MUSIC.equals(path) || KEY_DOWNLOADS.equals(path) || KEY_BUCKET.equals(path) || path.startsWith(KEY_FOLDER)) {
+        navigateInside(view, path, result);
+      } else if (KEY_UPPER.equals(path)) {
+        navigateUpper();
       }
     }
   }
@@ -1142,7 +1206,7 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
   }
 
   @Override
-  protected void onMultiSendPress (@NonNull TdApi.MessageSendOptions options, boolean disableMarkdown) {
+  protected void onMultiSendPress (View view, @NonNull TdApi.MessageSendOptions options, boolean disableMarkdown) {
     if (selectedItems == null || selectedItems.isEmpty()) {
       return;
     }
@@ -1167,7 +1231,7 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
       return;
     }
 
-    mediaLayout.sendFilesMixed(files, musicEntries, options, true);
+    mediaLayout.sendFilesMixed(view, files, musicEntries, options, true);
   }
 
   @Override
@@ -1201,7 +1265,7 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
         collapseToStart();
       } else {
         StackItem item = stack.get(stack.size() - 1);
-        navigateToPath(item.path, getLastPath(2), true, null, () -> {
+        navigateToPath(null, item.path, getLastPath(2), true, null, () -> {
           LinearLayoutManager manager = (LinearLayoutManager) recyclerView.getLayoutManager();
           manager.scrollToPositionWithOffset(removedItem.position, removedItem.positionOffset);
         }, this::navigateUpper);
@@ -1213,17 +1277,17 @@ public class MediaBottomFilesController extends MediaBottomBaseController<Void> 
     return stack.size() < skipCount ? null : normalizePath(stack.get(stack.size() - skipCount).path);
   }
 
-  private void navigateInside (final String path, final InlineResultCommon data) {
+  private void navigateInside (final View view, final String path, final InlineResultCommon data) {
     if (inFileSelectMode) {
       mediaLayout.cancelMultiSelection();
     }
 
     final LinearLayoutManager manager = (LinearLayoutManager) recyclerView.getLayoutManager();
     final int firstPosition = manager.findFirstVisibleItemPosition();
-    final View view = firstPosition != RecyclerView.NO_POSITION ? manager.findViewByPosition(firstPosition) : null;
-    final int firstPositionOffset = view != null ? view.getTop() : 0;
+    final View firstView = firstPosition != RecyclerView.NO_POSITION ? manager.findViewByPosition(firstPosition) : null;
+    final int firstPositionOffset = firstView != null ? firstView.getTop() : 0;
 
-    navigateToPath(path, getLastPath(1), false, data, () -> {
+    navigateToPath(view, path, getLastPath(1), false, data, () -> {
       stack.add(new StackItem(path, firstPosition != RecyclerView.NO_POSITION ? firstPosition : 0, firstPositionOffset));
       manager.scrollToPositionWithOffset(0, 0);
     }, null);

@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -78,6 +78,7 @@ import java.util.List;
 import me.vkryl.android.widget.FrameLayoutFix;
 import me.vkryl.core.StringUtils;
 import me.vkryl.td.ChatId;
+import me.vkryl.td.Td;
 
 public class ContactsController extends TelegramViewController<ContactsController.Args> implements OptionDelegate, BubbleHeaderView.Callback, TextWatcher, Runnable, Menu, Unlockable,
   TdlibCache.UserDataChangeListener, TdlibCache.UserStatusChangeListener, Comparator<TdApi.User> {
@@ -902,13 +903,11 @@ public class ContactsController extends TelegramViewController<ContactsControlle
         }
         String firstName = Strings.clean(user.getFirstName().trim()).toLowerCase();
         String lastName = Strings.clean(user.getLastName().trim()).toLowerCase();
-        String username = user.getUsername();
-        if (username != null)
-          username = username.toLowerCase();
+        TdApi.Usernames usernames = user.getUsernames();
         String check = (firstName + " " + lastName).trim();
 
         if (q != null) {
-          if (!firstName.startsWith(q) && !lastName.startsWith(q) && !check.startsWith(q) && !(!StringUtils.isEmpty(username) && username.startsWith(q))) {
+          if (!firstName.startsWith(q) && !lastName.startsWith(q) && !check.startsWith(q) && !Td.findUsernameByPrefix(usernames, q)) {
             continue;
           }
         }

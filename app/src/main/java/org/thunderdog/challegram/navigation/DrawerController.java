@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,6 +36,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.drinkless.td.libcore.telegram.TdApi;
+import org.thunderdog.challegram.BuildConfig;
 import org.thunderdog.challegram.Log;
 import org.thunderdog.challegram.R;
 import org.thunderdog.challegram.component.attach.CustomItemAnimator;
@@ -64,6 +65,7 @@ import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.tool.Views;
 import org.thunderdog.challegram.ui.ChatsController;
+import org.thunderdog.challegram.ui.FeatureToggles;
 import org.thunderdog.challegram.ui.ListItem;
 import org.thunderdog.challegram.ui.PeopleController;
 import org.thunderdog.challegram.ui.SettingsAdapter;
@@ -273,6 +275,10 @@ public class DrawerController extends ViewController<Void> implements View.OnCli
       items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
       items.add(new ListItem(ListItem.TYPE_DRAWER_ITEM, R.id.btn_reportBug, R.drawable.baseline_bug_report_24, Test.CLICK_NAME, false));
     }
+    if (BuildConfig.EXPERIMENTAL) {
+      items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
+      items.add(new ListItem(ListItem.TYPE_DRAWER_ITEM, R.id.btn_featureToggles, R.drawable.outline_toggle_on_24, "Feature Toggles", false));
+    }
     if (Settings.instance().inDeveloperMode()) {
       items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
       items.add(new ListItem(ListItem.TYPE_DRAWER_ITEM, R.id.btn_tdlib_clearLogs, R.drawable.baseline_bug_report_24, "Clear TDLib logs", false));
@@ -292,7 +298,7 @@ public class DrawerController extends ViewController<Void> implements View.OnCli
             TdlibBadgeCounter badge = account.getUnreadBadge();
             view.setChecked(account.id == account.context().preferredAccountId(), isUpdate);
             view.setUnreadCount(badge.getCount(), badge.isMuted(), isUpdate);
-            view.setAvatar(account.getAvatarPlaceholderMetadata(), account.getAvatarFile(false));
+            view.setAvatar(account);
             view.setText(Lang.getDebugString(account.getName(), account.isDebug()));
             view.setCustomControllerProvider(DrawerController.this);
             view.setPreviewActionListProvider(DrawerController.this);
@@ -818,7 +824,7 @@ public class DrawerController extends ViewController<Void> implements View.OnCli
         break;
       }
       case R.id.btn_tdlib_shareLogs: {
-        TdlibUi.sendLogs(context.navigation().getCurrentStackItem(), false, false);
+        TdlibUi.sendTdlibLogs(context.navigation().getCurrentStackItem(), false, false);
         break;
       }
       case R.id.btn_wallet: {
@@ -895,6 +901,9 @@ public class DrawerController extends ViewController<Void> implements View.OnCli
         context().currentTdlib().settings().toggleChatStyle();
         break;
       }
+      case R.id.btn_featureToggles:
+        UI.navigateTo(new FeatureToggles.Controller(context, context.currentTdlib()));
+        break;
     }
   }
 
@@ -930,7 +939,7 @@ public class DrawerController extends ViewController<Void> implements View.OnCli
   }
 
   @Override
-  public void onProxyConfigurationChanged (int proxyId, @Nullable String server, int port, @Nullable TdApi.ProxyType type, String description, boolean isCurrent, boolean isNewAdd) {
+  public void onProxyConfigurationChanged (int proxyId, @Nullable TdApi.InternalLinkTypeProxy proxy, String description, boolean isCurrent, boolean isNewAdd) {
     if (!isCurrent) {
       return;
     }
@@ -1082,7 +1091,7 @@ public class DrawerController extends ViewController<Void> implements View.OnCli
     });
 
     ViewController<?> c = UI.getCurrentStackItem(context());
-    View view = c != null ? c.get() : null;
+    View view = c != null ? c.getValue() : null;
     if (view != null && view instanceof ContentFrameLayout) {
       currentView = (ContentFrameLayout) view;
     } else {
@@ -1217,7 +1226,7 @@ public class DrawerController extends ViewController<Void> implements View.OnCli
   }
 
   private float getScreenWidth () {
-    return context.navigation().get().getMeasuredWidth();
+    return context.navigation().getValue().getMeasuredWidth();
   }
 
   public void translate (int lastScrollX) {

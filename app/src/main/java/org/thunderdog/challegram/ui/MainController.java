@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -905,6 +905,13 @@ public class MainController extends ViewPagerController<Void> implements Menu, M
     }
     showSuggestions();
     checkSyncAlert();
+    tdlib.checkDeadlocks(() -> runOnUiThreadOptional(() ->
+      context().permissions().requestPostNotifications(granted -> {
+        if (granted) {
+          tdlib.notifications().onNotificationPermissionGranted();
+        }
+      })
+    ));
   }
 
   @Override
@@ -1046,7 +1053,7 @@ public class MainController extends ViewPagerController<Void> implements Menu, M
 
   private void modifyNewPagerItemController (final ViewController<?> c, final int position) {
     if (c instanceof RecyclerViewProvider) {
-      c.get();
+      c.getValue();
       ((RecyclerViewProvider) c).provideRecyclerView().addOnScrollListener(new RecyclerView.OnScrollListener() {
         private float lastY;
         private float lastShowY;
@@ -1125,7 +1132,11 @@ public class MainController extends ViewPagerController<Void> implements Menu, M
   public void onMenuItemPressed (int id, View view) {
     switch (id) {
       case R.id.menu_btn_search: {
-        openSearchMode();
+        tdlib.checkDeadlocks(() -> runOnUiThreadOptional(() -> {
+          if (isFocused()) {
+            openSearchMode();
+          }
+        }));
         break;
       }
       /*case R.id.menu_btn_more: {
@@ -1190,10 +1201,10 @@ public class MainController extends ViewPagerController<Void> implements Menu, M
       return;
     }
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
       if (context().checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-        context().requestCustomPermissions(new String[] {Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, (code, granted) -> {
-          if (granted) {
+        context().requestCustomPermissions(new String[] {Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, (code, permissions, grantResults, grantCount) -> {
+          if (grantCount == permissions.length) {
             shareIntentImpl();
           } else {
             UI.showToast(R.string.NoStorageAccess, Toast.LENGTH_SHORT);
@@ -1445,7 +1456,7 @@ public class MainController extends ViewPagerController<Void> implements Menu, M
 
       if (mimeType.equals("image/gif")) {
         BitmapFactory.Options options = ImageReader.getImageSize(filePath);
-        out.add(new TdApi.InputMessageAnimation(TD.createInputFile(filePath), null, null, 0, options.outWidth, options.outHeight, messageCaption));
+        out.add(new TdApi.InputMessageAnimation(TD.createInputFile(filePath), null, null, 0, options.outWidth, options.outHeight, messageCaption, false));
         return messageCaption != null;
       }
 
@@ -1458,7 +1469,7 @@ public class MainController extends ViewPagerController<Void> implements Menu, M
         int height = rotation == 90 || rotation == 270 ? opts.outWidth / inSampleSize : opts.outHeight / inSampleSize;
 
         TdApi.InputFileGenerated inputFile = PhotoGenerationInfo.newFile(filePath, rotation);
-        out.add(new TdApi.InputMessagePhoto(inputFile, null, null, width, height, messageCaption, 0));
+        out.add(new TdApi.InputMessagePhoto(inputFile, null, null, width, height, messageCaption, 0, false));
         return messageCaption != null;
       }
 
@@ -1496,7 +1507,7 @@ public class MainController extends ViewPagerController<Void> implements Menu, M
 
           U.closeRetriever(media);
 
-          out.add(new TdApi.InputMessageVideo(inputVideo, null, null, duration, width, height, U.canStreamVideo(inputVideo), messageCaption, 0));
+          out.add(new TdApi.InputMessageVideo(inputVideo, null, null, duration, width, height, U.canStreamVideo(inputVideo), messageCaption, 0, false));
           return messageCaption != null;
         }
       }
@@ -1505,7 +1516,7 @@ public class MainController extends ViewPagerController<Void> implements Menu, M
     TD.FileInfo info = new TD.FileInfo();
     TdApi.InputFile file = TD.createInputFile(filePath, mimeType, info);
 
-    out.add(TD.toInputMessageContent(filePath, file, info, messageCaption));
+    out.add(TD.toInputMessageContent(filePath, file, info, messageCaption, false));
     return messageCaption != null;
   }
 

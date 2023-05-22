@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,6 +41,7 @@ import com.google.android.gms.location.LocationSettingsResponse;
 import com.google.android.gms.location.LocationSettingsStatusCodes;
 import com.google.android.gms.tasks.Task;
 
+import org.drinkless.td.libcore.telegram.TdApi;
 import org.thunderdog.challegram.BaseActivity;
 import org.thunderdog.challegram.BuildConfig;
 import org.thunderdog.challegram.Log;
@@ -179,11 +180,11 @@ public class LocationHelper implements ActivityResultHandler {
           if (activity != null) {
             Runnable onCancel = () -> onReceiveLocationFailure(ERROR_CODE_PERMISSION_CANCEL);
 
-            ActivityPermissionResult callback = (code, granted) -> {
+            ActivityPermissionResult callback = (code, permissions, grantResults, grantCount) -> {
               if (sendStatus[0]) {
                 return;
               }
-              if (granted) {
+              if (grantCount == permissions.length) {
                 receiveLocationInternal(activity, true, onlyCheck, skipAlert);
               } else {
                 onReceiveLocationFailure(ERROR_CODE_PERMISSION);

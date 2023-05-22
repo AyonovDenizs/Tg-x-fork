@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@ import androidx.annotation.NonNull;
 import org.drinkless.td.libcore.telegram.TdApi;
 import org.thunderdog.challegram.R;
 import org.thunderdog.challegram.U;
+import org.thunderdog.challegram.component.sticker.TGStickerObj;
 import org.thunderdog.challegram.core.Lang;
 import org.thunderdog.challegram.data.TGReaction;
 import org.thunderdog.challegram.loader.ComplexReceiver;
@@ -63,6 +64,7 @@ public class ViewPagerTopView extends FrameLayoutFix implements RtlCheckListener
     public final @DrawableRes int iconRes;
     public ImageReceiver imageReceiver;
     public int imageReceiverSize = 0;
+    public float imageReceiverScale = 0f;
     public TGReaction reaction;
     public final Counter counter;
     public final DrawableProvider provider;
@@ -431,8 +433,10 @@ public class ViewPagerTopView extends FrameLayoutFix implements RtlCheckListener
     for (Item item : items) {
       if (item.reaction != null) {
         TGReaction reaction = item.reaction;
+        TGStickerObj stickerObj = reaction.centerAnimationSicker();
         item.imageReceiver = complexReceiver.getImageReceiver(reaction.getId());
-        item.imageReceiver.requestFile(reaction.centerAnimationSicker().getImage());
+        item.imageReceiver.requestFile(stickerObj.getImage());
+        item.imageReceiverScale = stickerObj.getDisplayScale();
         item.imageReceiverSize = Screen.dp(34);
       }
     }
@@ -503,12 +507,13 @@ public class ViewPagerTopView extends FrameLayoutFix implements RtlCheckListener
     int selectionWidth, selectionLeft;
     if (shouldWrapContent()) {
       float remainFactor = selectionFactor - (float) ((int) selectionFactor);
+      int selectionIndex = MathUtils.clamp((int) selectionFactor, 0, items.size() - 1);
       if (remainFactor == 0f) {
-        int selectionIndex = Math.max(0, Math.min(items.size() - 1, (int) selectionFactor));
         selectionWidth = items.get(selectionIndex).actualWidth + textPadding * 2;
       } else {
-        int fromWidth = items.get((int) selectionFactor).actualWidth + textPadding * 2;
-        int toWidth = items.get((int) selectionFactor + 1).actualWidth + textPadding * 2;
+        int fromWidth = items.get(selectionIndex).actualWidth + textPadding * 2;
+        int nextIndex = MathUtils.clamp((int) selectionFactor + 1, 0, items.size() - 1);
+        int toWidth = items.get(nextIndex).actualWidth + textPadding * 2;
         selectionWidth = fromWidth + (int) ((float) (toWidth - fromWidth) * remainFactor);
       }
       selectionLeft = 0;
@@ -725,7 +730,7 @@ public class ViewPagerTopView extends FrameLayoutFix implements RtlCheckListener
               int imgY = (viewHeight - size) / 2;
               item.imageReceiver.setAlpha(imageAlpha);
               item.imageReceiver.setBounds(cx, imgY, cx + size, imgY + size);
-              item.imageReceiver.draw(c);
+              item.imageReceiver.drawScaled(c, item.imageReceiverScale);
               item.counter.draw(c, cx + size, viewHeight / 2f, Gravity.LEFT, counterAlpha, item.provider, 0);
             } else {
               item.counter.draw(c, cx + itemWidth / 2f, viewHeight / 2f, Gravity.CENTER, counterAlpha, imageAlpha, item.provider, 0);

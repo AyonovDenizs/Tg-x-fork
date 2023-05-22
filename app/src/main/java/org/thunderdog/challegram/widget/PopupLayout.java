@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -511,6 +511,7 @@ public class PopupLayout extends RootFrameLayout implements FactorAnimator.Targe
       ((ViewGroup) menuWrap.getParent()).removeView(menuWrap);
     }
 
+    final boolean anchorCenter = menuWrap.getAnchorMode() == MenuMoreWrap.ANCHOR_MODE_CENTER;
     final boolean anchorRight = menuWrap.getAnchorMode() == MenuMoreWrap.ANCHOR_MODE_RIGHT;
     final int padding = Screen.dp(8f);
     final int itemsWidth = menuWrap.getItemsWidth();
@@ -629,7 +630,7 @@ public class PopupLayout extends RootFrameLayout implements FactorAnimator.Targe
 
   @Override
   protected View getMeasureTarget () {
-    return boundController != null ? boundController.get() : this;
+    return boundController != null ? boundController.getValue() : this;
   }
 
   private static final int ANIMATION_TYPE_NONE = -1;
@@ -673,6 +674,10 @@ public class PopupLayout extends RootFrameLayout implements FactorAnimator.Targe
           }
 
           if (animationType == ANIMATION_TYPE_MORE_SCALE) {
+            if (menuWrap.getAnchorMode() == MenuMoreWrap.ANCHOR_MODE_CENTER) {
+              final int itemsWidth = menuWrap.getItemsWidth();
+              menuWrap.setPivotX(itemsWidth / 2f);
+            }
             menuWrap.scaleIn(listener);
             return;
           }

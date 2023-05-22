@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,6 +38,7 @@ import org.thunderdog.challegram.telegram.TdlibUi;
 import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.unsorted.Settings;
+import org.thunderdog.challegram.util.text.Highlight;
 import org.thunderdog.challegram.util.text.Text;
 import org.thunderdog.challegram.util.text.TextColorSet;
 import org.thunderdog.challegram.util.text.TextColorSets;
@@ -194,7 +195,11 @@ public class TGMessageText extends TGMessage {
   }
 
   private boolean setText (TdApi.FormattedText text, boolean parseEntities) {
-    if (this.text == null || !Td.equalsTo(this.text, text)) {
+    return setText(text, parseEntities, false);
+  }
+
+  private boolean setText (TdApi.FormattedText text, boolean parseEntities, boolean forceUpdate) {
+    if (this.text == null || !Td.equalsTo(this.text, text) || forceUpdate) {
       this.text = text;
       TextColorSet colorSet = isErrorMessage() ? TextColorSets.Regular.NEGATIVE : getTextColorSet();
       TextWrapper.TextMediaListener textMediaListener = (wrapper, updatedText, specificTextMedia) -> {
@@ -202,13 +207,20 @@ public class TGMessageText extends TGMessage {
           invalidateTextMediaReceiver(updatedText, specificTextMedia);
         }
       };
-      if (text.entities != null || !parseEntities) {
+      if (translatedText != null) {
+        this.wrapper = new TextWrapper(translatedText.text, getTextStyleProvider(), colorSet)
+          .setEntities(TextEntity.valueOf(tdlib, translatedText, openParameters()), textMediaListener)
+          .setHighlightText(getHighlightedText(Highlight.Pool.KEY_TEXT, translatedText.text))
+          .setClickCallback(clickCallback());
+      } else if (text.entities != null || !parseEntities) {
         this.wrapper = new TextWrapper(text.text, getTextStyleProvider(), colorSet)
           .setEntities(TextEntity.valueOf(tdlib, text, openParameters()), textMediaListener)
+          .setHighlightText(getHighlightedText(Highlight.Pool.KEY_TEXT, text.text))
           .setClickCallback(clickCallback());
       } else {
         this.wrapper = new TextWrapper(text.text, getTextStyleProvider(), colorSet)
           .setEntities(Text.makeEntities(text.text, Text.ENTITY_FLAGS_ALL, null, tdlib, openParameters()), textMediaListener)
+          .setHighlightText(getHighlightedText(Highlight.Pool.KEY_TEXT, text.text))
           .setClickCallback(clickCallback());
       }
       this.wrapper.addTextFlags(Text.FLAG_BIG_EMOJI);
@@ -225,6 +237,14 @@ public class TGMessageText extends TGMessage {
       return true;
     }
     return false;
+  }
+
+  @Override
+  protected void onUpdateHighlightedText () {
+    if (this.text != null) {
+      setText(this.text, false, true);
+      rebuildContent();
+    }
   }
 
   private boolean hasMedia () {
@@ -400,9 +420,10 @@ public class TGMessageText extends TGMessage {
 
   @Override
   protected void drawContent (MessageView view, Canvas c, int startX, int startY, int maxWidth, Receiver preview, Receiver receiver) {
-    wrapper.draw(c, startX, getStartXRtl(startX, maxWidth), Config.MOVE_BUBBLE_TIME_RTL_TO_LEFT ? 0 : getBubbleTimePartWidth(), startY + getTextTopOffset(), null, 1f, view.getTextMediaReceiver());
+    float alpha = getTranslationLoadingAlphaValue();
+    wrapper.draw(c, startX, getStartXRtl(startX, maxWidth), Config.MOVE_BUBBLE_TIME_RTL_TO_LEFT ? 0 : getBubbleTimePartWidth(), startY + getTextTopOffset(), null, alpha, view.getTextMediaReceiver());
     if (webPage != null && receiver != null) {
-      webPage.draw(view, c, Lang.rtl() ? startX + maxWidth - webPage.getWidth() : startX, getWebY(), preview, receiver, 1f, view.getTextMediaReceiver());
+      webPage.draw(view, c, Lang.rtl() ? startX + maxWidth - webPage.getWidth() : startX, getWebY(), preview, receiver, alpha, view.getTextMediaReceiver());
     }
   }
 
@@ -606,5 +627,22 @@ public class TGMessageText extends TGMessage {
 
   public long getSponsorChatId () {
     return isSponsored() ? sponsoredMetadata.sponsorChatId : 0;
+  }
+
+  private TdApi.FormattedText translatedText;
+
+  @Nullable
+  @Override
+  public TdApi.FormattedText getTextToTranslateImpl () {
+    return text;
+  }
+
+  @Override
+  protected void setTranslationResult (@Nullable TdApi.FormattedText text) {
+    translatedText = text;
+    setText(this.text, false, true);
+    rebuildAndUpdateContent();
+    invalidateTextMediaReceiver();
+    super.setTranslationResult(text);
   }
 }

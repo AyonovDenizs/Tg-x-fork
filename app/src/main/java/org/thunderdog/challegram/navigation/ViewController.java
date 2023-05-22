@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -532,7 +532,7 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
     if (runnable == null)
       return;
     runOnUiThread(() -> {
-      if (!isDestroyed() && (condition == null || condition.get())) {
+      if (!isDestroyed() && (condition == null || condition.getBoolValue())) {
         runnable.run();
       }
     });
@@ -551,6 +551,16 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
       runnable.run();
     } else {
       runOnUiThread(runnable);
+    }
+  }
+
+  protected final void executeOnUiThreadOptional (@NonNull Runnable runnable) {
+    if (UI.inUiThread()) {
+      if (!isDestroyed()) {
+        runnable.run();
+      }
+    } else {
+      runOnUiThreadOptional(runnable);
     }
   }
 
@@ -613,16 +623,27 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
 
   }
 
-  protected @CallSuper void updateSearchMode (boolean inSearch) {
+  @CallSuper
+  protected void updateSearchMode (boolean inSearch, boolean needUpdateKeyboard) {
     if (inSearch) {
       cachedLockFocusView = lockFocusView;
       lockFocusView = searchHeaderView;
-      Keyboard.show(searchHeaderView);
+      if (needUpdateKeyboard) {
+        Keyboard.show(searchHeaderView);
+      }
     } else {
       lockFocusView = cachedLockFocusView;
-      Keyboard.hide(searchHeaderView);
+      if (needUpdateKeyboard) {
+        Keyboard.hide(searchHeaderView);
+      }
       cachedLockFocusView = null;
     }
+  }
+
+  @CallSuper
+  @Deprecated
+  protected void updateSearchMode (boolean inSearch) {
+    updateSearchMode(inSearch, true);
   }
 
   protected View getCustomFocusView () {
@@ -1082,7 +1103,11 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
     return searchHeaderView;
   }
 
-  protected final String getLastSearchInput () {
+  protected void setSearchInput (String text) {
+    clearSearchInput(text, false);
+  }
+
+  public final String getLastSearchInput () {
     return lastSearchInput;
   }
 
@@ -1345,6 +1370,14 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
 
   public final boolean inSearchMode () {
     return (flags & FLAG_IN_SEARCH_MODE) != 0;
+  }
+
+  public boolean onBeforeLeaveSearchMode () {
+    return true;
+  }
+
+  protected boolean needHideKeyboardOnTouchBackButton () {
+    return true;
   }
 
   protected final void enterSearchMode () {
@@ -2080,7 +2113,7 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
           break;
         }
         case R.id.btn_openLink: {
-          if (openCallback == null || !openCallback.get()) {
+          if (openCallback == null || !openCallback.getBoolValue()) {
             tdlib.ui().openUrl(ViewController.this, url, options);
           }
           break;
@@ -2516,7 +2549,7 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
         return c.getTimeInMillis();
       };
       InfiniteRecyclerView.ItemChangeListener<SimpleStringItem> listener = (v, index) -> {
-        updateSendButton.runWithLong(calculateDate.get());
+        updateSendButton.runWithLong(calculateDate.getLongValue());
       };
       dayPicker.setNeedSeparators(false);
       dayPicker.setMinMaxProvider((v, index) -> {
@@ -2532,7 +2565,7 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
         return index;
       });
       dayPicker.setItemChangeListener((v, index) -> {
-        long millis = calculateDate.get();
+        long millis = calculateDate.getLongValue();
         if (millis < tdlib.currentTimeMillis()) {
           c.setTimeInMillis(tdlib.currentTimeMillis());
           c.add(Calendar.MINUTE, minAddMinutes);
@@ -2621,7 +2654,7 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
       }
       contentHeight += Screen.dp(56f);
       sendView.setOnClickListener(v -> {
-        long millis = calculateDate.get();
+        long millis = calculateDate.getLongValue();
         if (tdlib.currentTimeMillis() < millis) {
           callback.runWithLong(millis);
           popupLayout.hideWindow(true);
@@ -2702,7 +2735,7 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
   }
 
   @Override
-  public final View get () {
+  public final View getValue () {
     if (contentView == null) {
       contentView = onCreateView(context());
       contentView.setTag(this);
@@ -3002,7 +3035,7 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
         UI.showKeyboardDelayed(lockFocusView);
       }
     } else {
-      get().requestFocus();
+      getValue().requestFocus();
     }
     trackUserActivity();
     onFocusStateChanged();
@@ -3310,7 +3343,7 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
   public final void maximizeFromPreview () {
     if (isInForceTouchMode() && (flags & FLAG_MAXIMIZING) == 0) {
       flags |= FLAG_MAXIMIZING;
-      UI.forceVibrate(get(), false);
+      UI.forceVibrate(getValue(), false);
       context.closeForceTouch();
     }
   }

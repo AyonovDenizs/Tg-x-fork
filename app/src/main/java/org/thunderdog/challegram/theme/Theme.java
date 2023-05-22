@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -182,7 +182,7 @@ public class Theme {
 
   // Base
 
-  private static float getProperty (final @ThemeProperty int propertyId) {
+  public static float getProperty (final @ThemeProperty int propertyId) {
     return ThemeManager.instance().currentTheme().getProperty(propertyId);
   }
 
@@ -861,6 +861,10 @@ public class Theme {
 
   public static float getSeparatorReplacement () {
     return Theme.getProperty(ThemeProperty.REPLACE_SHADOWS_WITH_SEPARATORS);
+  }
+
+  public static float avatarRadiusDefault () {
+    return Theme.getProperty(ThemeProperty.AVATAR_RADIUS);
   }
 
   public static float getBubbleOutlineFactor () {

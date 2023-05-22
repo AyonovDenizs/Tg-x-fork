@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +17,8 @@ package org.thunderdog.challegram.config;
 import android.os.Build;
 import android.view.WindowManager;
 
+import androidx.annotation.Dimension;
+
 import org.drinkless.td.libcore.telegram.TdApi;
 import org.thunderdog.challegram.BuildConfig;
 import org.thunderdog.challegram.N;
@@ -26,7 +28,9 @@ import org.thunderdog.challegram.data.TD;
 public class Config {
   public static final boolean SUPPORT_SYSTEM_UNDERLINE_SPAN = true;
 
-  public static final boolean COMMENTS_SUPPORTED = false;
+  public static final boolean COMMENTS_INLINE_BUTTON_SEPARATOR_1PX = false;
+  public static final @Dimension(unit = Dimension.DP) int COMMENTS_BUBBLE_BUTTON_MIN_WIDTH = 200;
+  public static final boolean SHOW_CHANNEL_POST_REPLY_INFO_IN_COMMENTS = true;
 
   public static final boolean NEED_SILENT_BROADCAST = false;
 
@@ -75,9 +79,6 @@ public class Config {
   public static final boolean ALLOW_SEEK_ANYTIME = true;
 
   public static final boolean NEED_NETWORK_SYNC_REQUEST = false;
-
-  public static final boolean VIEW_MESSAGES_BEFORE_SCROLL = false;
-  public static final boolean READ_MESSAGES_BEFORE_FOCUS = false;
 
   // Fields from default config.
 
@@ -163,13 +164,12 @@ public class Config {
 
   public static final boolean USE_GROUP_NAMES = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O;
 
-  public static final boolean HEADLESS_RECENT_PACK = false;
+  public static final boolean FORCE_SHOW_RECENTS_STICKERS_TITLE = false;
+  public static final int DEFAULT_SHOW_RECENT_STICKERS_COUNT = 10;
 
   public static final boolean USE_TEXT_ADVANCE = true; // Build.VERSION.SDK_INT >= Build.VERSION_CODES.M;
 
   public static final boolean SMOOTH_SCROLL_TO_BOTTOM_ENABLED = false; // Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP;
-
-  public static final boolean SEARCH_BY_AVAILABLE = false;
 
   public static final boolean ALLOW_DEBUG_DC = BuildConfig.DEBUG || BuildConfig.EXPERIMENTAL;
 
@@ -256,7 +256,7 @@ public class Config {
 
   public static final boolean REVEAL_ANIMATION_AVAILABLE = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP;
 
-  public static final boolean REMOVE_INTRO = !BuildConfig.DEBUG; // true;
+  public static final boolean REMOVE_INTRO = true;
 
   public static final boolean TEST_CHAT_COUNTERS = false;
 
@@ -281,4 +281,18 @@ public class Config {
   public static final boolean LOOP_BIG_CUSTOM_EMOJI = false;
 
   public static final String FILE_PROVIDER_AUTHORITY = BuildConfig.APPLICATION_ID + ".provider";
+
+  public static final boolean PROFILE_DEADLOCKS = true;
+
+  public static final boolean DEBUG_REACTIONS_ANIMATIONS = false;
+  public static final boolean TEST_STATIC_REACTIONS = false;
+  public static final boolean TEST_GENERIC_REACTION_EFFECTS = false;
+
+  public static final boolean REORDER_INSTALLED_STICKER_SETS = false;
+
+  public static final boolean NEED_TEMPORARY_TOPICS_WORKAROUND = true;
+
+  public static final boolean USE_HARDWARE_PHOTO_VIEWER_CONFIG = false;
+
+  public static final boolean REQUIRE_FIREBASE_SERVICES_FOR_SAFETYNET = false;
 }

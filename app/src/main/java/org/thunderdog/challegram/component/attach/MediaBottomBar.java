@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -72,7 +72,7 @@ public class MediaBottomBar extends FrameLayoutFix implements GestureDetector.On
   }
 
   interface Callback {
-    boolean onBottomPrepareSectionChange (int fromIndex, int toIndex);
+    boolean onBottomPrepareSectionChange (int fromIndex, int toIndex, boolean ignorePermissionsRequest);
     void onBottomFactorChanged (float factor);
     void onBottomSectionChanged (int index);
 
@@ -296,7 +296,7 @@ public class MediaBottomBar extends FrameLayoutFix implements GestureDetector.On
       }
       case MotionEvent.ACTION_UP: {
         if (touchIndex != -1 && findTouchIndex(x) == touchIndex) {
-          performSelection(touchIndex);
+          performSelection(touchIndex, false);
           return true;
         }
         break;
@@ -308,20 +308,24 @@ public class MediaBottomBar extends FrameLayoutFix implements GestureDetector.On
   // Animation
 
   public boolean setSelectedIndex (int index) {
+   return setSelectedIndex(index, false);
+  }
+
+  public boolean setSelectedIndex (int index, boolean ignorePermissionsRequest) {
     int centerX = findCenterX(index);
     if (centerX == -1) {
       return false;
     }
     touchCenterX = centerX;
     touchIndex = index;
-    return performSelection(index);
+    return performSelection(index, ignorePermissionsRequest);
   }
 
   private boolean isAnimating;
   private BarItem fromItem, toItem;
   private float factor;
 
-  private boolean performSelection (final int index) {
+  private boolean performSelection (final int index, boolean ignorePermissionsRequest) {
     if (isAnimating) {
       return false;
     }
@@ -329,7 +333,7 @@ public class MediaBottomBar extends FrameLayoutFix implements GestureDetector.On
     if (callback != null) {
       if (this.index == index) {
         callback.onBottomTopRequested(index);
-      } else if (!callback.onBottomPrepareSectionChange(this.index, index)) {
+      } else if (!callback.onBottomPrepareSectionChange(this.index, index, ignorePermissionsRequest)) {
         return false;
       }
     }

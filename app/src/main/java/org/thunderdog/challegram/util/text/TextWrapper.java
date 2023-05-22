@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,6 +49,7 @@ public class TextWrapper implements ListAnimator.Measurable, Destroyable, Text.T
   private final TextColorSet colorTheme;
 
   private @Nullable TextEntity[] entities;
+  private @Nullable Highlight highlightText;
 
   private boolean isPortrait;
   private int maxLines;
@@ -136,6 +137,11 @@ public class TextWrapper implements ListAnimator.Measurable, Destroyable, Text.T
     return this;
   }
 
+  public TextWrapper setHighlightText (Highlight highlight) {
+    this.highlightText = highlight;
+    return this;
+  }
+
   @Override
   public void onInvalidateTextMedia (Text text, @Nullable TextMedia specificMedia) {
     if (textMediaListener != null && text == getCurrent()) {
@@ -216,7 +222,7 @@ public class TextWrapper implements ListAnimator.Measurable, Destroyable, Text.T
 
     boolean sizeChanged = textSizes[index] != textSizePx || (texts[index] != null && texts[index].getMaxLineCount() != maxLines);
     if (sizeChanged || texts[index] == null || sizes[index] != maxWidth) {
-      boolean needBigEmoji = BitwiseUtils.getFlag(textFlags, Text.FLAG_BIG_EMOJI) && Settings.instance().useBigEmoji();
+      boolean needBigEmoji = BitwiseUtils.hasFlag(textFlags, Text.FLAG_BIG_EMOJI) && Settings.instance().useBigEmoji();
       final Text oldText = texts[index];
       Text text = oldText;
       if (text != null && !sizeChanged && !needBigEmoji) {
@@ -225,6 +231,7 @@ public class TextWrapper implements ListAnimator.Measurable, Destroyable, Text.T
         Text.Builder b = new Text.Builder(this.text, maxWidth, textStyleProvider, colorTheme)
           .maxLineCount(maxLines)
           .entities(entities, this)
+          .highlight(highlightText)
           .lineWidthProvider(lineWidthProvider)
           .textFlags(BitwiseUtils.setFlag(textFlags, Text.FLAG_BIG_EMOJI, false));
         text = b.build();

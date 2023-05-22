@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -72,7 +72,7 @@ public class StickersListController extends ViewController<StickersListControlle
     boolean canViewPack ();
     void archiveStickerSet ();
     void removeStickerSet ();
-    boolean onStickerClick (View view, TGStickerObj obj, boolean isMenuClick, boolean forceDisableNotification, @Nullable TdApi.MessageSchedulingState schedulingState);
+    boolean onStickerClick (View view, TGStickerObj obj, boolean isMenuClick, TdApi.MessageSendOptions sendOptions);
     long getStickerOutputChatId ();
   }
 
@@ -151,7 +151,7 @@ public class StickersListController extends ViewController<StickersListControlle
             }
           }
 
-          showMore(ids.get(), strings.get(), icons.get(), 0, true);
+          showMore(ids.get(), strings.get(), icons.get(), 0);
         }
         break;
       }
@@ -462,8 +462,8 @@ public class StickersListController extends ViewController<StickersListControlle
   }
 
   @Override
-  public boolean onStickerClick (StickerSmallView view, View clickView, TGStickerObj sticker, boolean isMenuClick, boolean forceDisableNotification, @Nullable TdApi.MessageSchedulingState schedulingState) {
-    return getArguments() != null && getArgumentsStrict().onStickerClick(clickView, sticker, isMenuClick, forceDisableNotification, schedulingState);
+  public boolean onStickerClick (StickerSmallView view, View clickView, TGStickerObj sticker, boolean isMenuClick, TdApi.MessageSendOptions sendOptions) {
+    return getArguments() != null && getArgumentsStrict().onStickerClick(clickView, sticker, isMenuClick, sendOptions);
   }
 
   @Override

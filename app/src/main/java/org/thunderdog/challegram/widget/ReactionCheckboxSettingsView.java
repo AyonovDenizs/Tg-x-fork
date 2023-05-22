@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -150,13 +150,12 @@ public class ReactionCheckboxSettingsView extends LinearLayout implements ThemeI
     this.reaction = reaction;
     activateAnimationSticker = reaction.centerAnimationSicker();
     if (activateAnimationSticker.getPreviewAnimation() != null) {
-      activateAnimationSticker.getPreviewAnimation().setPlayOnce(true);
-      stickerSmallView.setPadding(0);
-    } else {
-      stickerSmallView.setPadding(Screen.dp(12));
+      if (!activateAnimationSticker.isCustomReaction()) {
+        activateAnimationSticker.getPreviewAnimation().setPlayOnce(true);
+      }
     }
     stickerSmallView.setSticker(activateAnimationSticker);
-    setCaptionText(reaction.reaction.title);
+    setCaptionText(reaction.getTitle());
   }
 
   public void setChecked (boolean checked, boolean animated) {

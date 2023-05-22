@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2280,6 +2280,10 @@ public class ThemeListController extends RecyclerViewController<ThemeListControl
       ThemeProperty.BUBBLE_OUTLINE_SIZE,
       ThemeProperty.BUBBLE_DATE_CORNER,
       ThemeProperty.BUBBLE_UNREAD_SHADOW,
+      ThemeProperty.AVATAR_RADIUS,
+      ThemeProperty.AVATAR_RADIUS_FORUM,
+      ThemeProperty.AVATAR_RADIUS_CHAT_LIST,
+      ThemeProperty.AVATAR_RADIUS_CHAT_LIST_FORUM,
       ThemeProperty.LIGHT_STATUS_BAR,
       ThemeProperty.IMAGE_CORNER,
       ThemeProperty.DATE_CORNER,
@@ -3359,7 +3363,7 @@ public class ThemeListController extends RecyclerViewController<ThemeListControl
           setChildAlpha(view);
         }
         FillingDrawable drawable;
-        drawable = Theme.findFillingDrawable(get());
+        drawable = Theme.findFillingDrawable(getValue());
         if (drawable != null)
           drawable.setAlphaFactor(1f - factor);
         setForcePreview(factor > 0f);

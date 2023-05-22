@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,6 +41,7 @@ import java.util.List;
 
 import me.vkryl.android.AnimatorUtils;
 import me.vkryl.android.animator.FactorAnimator;
+import me.vkryl.core.MathUtils;
 import me.vkryl.core.reference.ReferenceList;
 
 public class ThemeManager implements FactorAnimator.Target, GlobalAccountListener {
@@ -548,7 +549,13 @@ public class ThemeManager implements FactorAnimator.Target, GlobalAccountListene
 
       case ThemeProperty.SHADOW_DEPTH:
       case ThemeProperty.SUBTITLE_ALPHA:
-        return Math.max(0f, Math.min(1f, value));
+      case ThemeProperty.AVATAR_RADIUS:
+      case ThemeProperty.AVATAR_RADIUS_FORUM:
+        return MathUtils.clamp(value);
+
+      case ThemeProperty.AVATAR_RADIUS_CHAT_LIST:
+      case ThemeProperty.AVATAR_RADIUS_CHAT_LIST_FORUM:
+        return value == -1.0f ? value : MathUtils.clamp(value);
 
       case ThemeProperty.BUBBLE_OUTLINE_SIZE:
       case ThemeProperty.IMAGE_CORNER:

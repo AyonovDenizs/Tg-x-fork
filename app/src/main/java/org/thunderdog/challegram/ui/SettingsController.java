@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,6 +41,7 @@ import org.thunderdog.challegram.core.Lang;
 import org.thunderdog.challegram.data.TD;
 import org.thunderdog.challegram.data.TGMessage;
 import org.thunderdog.challegram.data.TGStickerSetInfo;
+import org.thunderdog.challegram.loader.AvatarReceiver;
 import org.thunderdog.challegram.loader.ImageGalleryFile;
 import org.thunderdog.challegram.mediaview.MediaViewController;
 import org.thunderdog.challegram.navigation.ActivityResultHandler;
@@ -296,7 +297,7 @@ public class SettingsController extends ViewController<Void> implements
           break;
         }
         case R.id.btn_changePhotoGallery: {
-          UI.openGalleryDelayed(false);
+          UI.openGalleryDelayed(context, false);
           break;
         }
         case R.id.btn_changePhotoDelete: {
@@ -325,6 +326,8 @@ public class SettingsController extends ViewController<Void> implements
     switch (status) {
       case TdlibNotificationManager.Status.BLOCKED_ALL:
         return R.string.NotificationsErrorBlocked;
+      case TdlibNotificationManager.Status.MISSING_PERMISSION:
+        return R.string.NotificationsErrorPermission;
       case TdlibNotificationManager.Status.BLOCKED_CATEGORY:
         return R.string.NotificationsErrorBlockedCategory;
       case TdlibNotificationManager.Status.DISABLED_SYNC:
@@ -570,12 +573,12 @@ public class SettingsController extends ViewController<Void> implements
             break;
           }
           case R.id.btn_username: {
-            if (myUsername == null) {
+            if (myUsernames == null) {
               view.setData(R.string.LoadingUsername);
-            } else if (myUsername.isEmpty()) {
+            } else if (StringUtils.isEmpty(myUsernames.editableUsername)) {
               view.setData(R.string.SetUpUsername);
             } else {
-              view.setData("@" + myUsername);
+              view.setData("@" + myUsernames.editableUsername); // TODO multi-username support
             }
             break;
           }
@@ -854,11 +857,7 @@ public class SettingsController extends ViewController<Void> implements
   private void updateHeader () {
     TdApi.User user = tdlib.myUser();
     if (headerCell != null) {
-      if (user == null || TD.isPhotoEmpty(user.profilePhoto)) {
-        headerCell.setAvatarPlaceholder(tdlib.cache().userPlaceholder(tdlib.myUserId(), user, false, ComplexHeaderView.getBaseAvatarRadiusDp(), null));
-      } else {
-        headerCell.setAvatar(user.profilePhoto);
-      }
+      headerCell.getAvatarReceiver().requestUser(tdlib, tdlib.myUserId(), AvatarReceiver.Options.FULL_SIZE);
       headerCell.setText(user != null ? TD.getUserName(user) : Lang.getString(R.string.LoadingUser), getSubtext());
       headerCell.invalidate();
     }
@@ -868,7 +867,7 @@ public class SettingsController extends ViewController<Void> implements
     if (tdlib.isConnected()) {
       return Lang.lowercase(Lang.getString(tdlib.myUser() != null ? R.string.status_Online : R.string.network_Connecting));
     } else {
-      return Lang.lowercase(Lang.getString(TdlibUi.stringForConnectionState(tdlib.connectionState())));
+      return Lang.lowercase(tdlib.connectionStateText());
     }
   }
 
@@ -896,7 +895,7 @@ public class SettingsController extends ViewController<Void> implements
     setBio(newBio);
   }
 
-  private String myUsername;
+  private @Nullable TdApi.Usernames myUsernames;
   private String myPhone, originalPhoneNumber;
   private @Nullable TdApi.FormattedText about;
 
@@ -907,9 +906,12 @@ public class SettingsController extends ViewController<Void> implements
   }
 
   private boolean setUsername (@Nullable TdApi.User myUser) {
-    String username = myUser != null ? myUser.username : null;
-    if ((myUsername == null && username != null) || (myUsername != null && !myUsername.equals(username))) {
-      this.myUsername = username;
+    TdApi.Usernames usernames = myUser != null ? myUser.usernames : null;
+    if (myUser != null && usernames == null) {
+      usernames = new TdApi.Usernames(new String[0], new String[0], "");
+    }
+    if ((myUsernames == null && usernames != null) || (myUsernames != null && !Td.equalsTo(myUsernames, usernames))) {
+      this.myUsernames = usernames;
       return true;
     }
     return false;
@@ -934,7 +936,7 @@ public class SettingsController extends ViewController<Void> implements
   }
 
   @Override
-  public void onConnectionStateChanged (int newState, int oldState) {
+  public void onConnectionDisplayStatusChanged () {
     runOnUiThreadOptional(() -> {
       if (headerCell != null) {
         headerCell.setSubtitle(getSubtext());
@@ -963,8 +965,20 @@ public class SettingsController extends ViewController<Void> implements
   }
 
   private void viewSourceCode (boolean isTdlib) {
-    AppBuildInfo appBuildInfo = Settings.instance().getCurrentBuildInformation();
-    tdlib.ui().openUrl(this, isTdlib ? appBuildInfo.tdlibCommitUrl() : appBuildInfo.commitUrl(), new TdlibUi.UrlOpenParameters().disableInstantView());
+    String url;
+    if (isTdlib) {
+      String tdlibCommitHash = Td.tdlibCommitHashFull();
+      url = AppBuildInfo.tdlibCommitUrl(tdlibCommitHash);
+    } else {
+      AppBuildInfo appBuildInfo = Settings.instance().getCurrentBuildInformation();
+      url = appBuildInfo.commitUrl();
+    }
+    if (!StringUtils.isEmpty(url)) {
+      tdlib.ui().openUrl(this,
+        url,
+        new TdlibUi.UrlOpenParameters().disableInstantView()
+      );
+    }
   }
 
   @Override
@@ -1022,7 +1036,7 @@ public class SettingsController extends ViewController<Void> implements
           }
           b.item(new OptionItem(R.id.btn_sourceCode, Lang.getString(R.string.format_commit, Lang.getString(R.string.ViewSourceCode), appBuildInfo.getCommit()), OPTION_COLOR_NORMAL, R.drawable.baseline_github_24));
           if (appBuildInfo.getTdlibCommitFull() != null) {
-            b.item(new OptionItem(R.id.btn_tdlib, Lang.getCharSequence(R.string.format_commit, "TDLib " + Td.tdlibVersion(), appBuildInfo.tdlibCommit()), OPTION_COLOR_NORMAL, R.drawable.baseline_tdlib_24));
+            b.item(new OptionItem(R.id.btn_tdlib, Lang.getCharSequence(R.string.format_commit, "TDLib " + Td.tdlibVersion(), Td.tdlibCommitHash()), OPTION_COLOR_NORMAL, R.drawable.baseline_tdlib_24));
           }
           int i = 0;
           for (PullRequest pullRequest : appBuildInfo.getPullRequests()) {

@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@ import android.app.Notification;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.RingtoneManager;
@@ -34,11 +35,13 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RawRes;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
 
 import org.drinkless.td.libcore.telegram.TdApi;
 import org.thunderdog.challegram.FileProvider;
 import org.thunderdog.challegram.Log;
 import org.thunderdog.challegram.R;
+import org.thunderdog.challegram.TDLib;
 import org.thunderdog.challegram.U;
 import org.thunderdog.challegram.config.Config;
 import org.thunderdog.challegram.core.BaseThread;
@@ -328,7 +331,12 @@ public class TdlibNotificationManager implements UI.StateListener, Passcode.Lock
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Tdlib tdlib = ((TdlibNotificationManager) msg.obj).tdlib;
             TdlibNotificationChannelGroup.cleanupChannelGroups(context);
-            tdlib.notifications().createChannels();
+            try {
+              tdlib.notifications().createChannels();
+            } catch (TdlibNotificationChannelGroup.ChannelCreationFailureException e) {
+              TDLib.Tag.notifications("Unable to create notification channels:\n%s", Log.toString(e));
+              tdlib.settings().trackNotificationChannelProblem(e, 0);
+            }
             TdlibNotificationChannelGroup.cleanupChannels(tdlib);
           }
           break;
@@ -460,6 +468,13 @@ public class TdlibNotificationManager implements UI.StateListener, Passcode.Lock
     // tdlib.context().global().addAccountListener(this);
   }
 
+  /**
+   * Called from {@link org.thunderdog.challegram.service.FirebaseListenerService} when push processing takes too long.
+   * */
+  public void notifyPushProcessingTakesTooLong () {
+    notification.abortCancelableOperations();
+  }
+
   public Tdlib tdlib () {
     return tdlib;
   }
@@ -490,6 +505,7 @@ public class TdlibNotificationManager implements UI.StateListener, Passcode.Lock
   public boolean areNotificationsBlockedGlobally () {
     switch (getNotificationBlockStatus()) {
       case Status.BLOCKED_ALL:
+      case Status.MISSING_PERMISSION:
       case Status.BLOCKED_CATEGORY:
       case Status.DISABLED_APP_SYNC:
       case Status.DISABLED_SYNC:
@@ -532,28 +548,37 @@ public class TdlibNotificationManager implements UI.StateListener, Passcode.Lock
     Status.FIREBASE_MISSING,
     Status.INTERNAL_ERROR,
     Status.ACCOUNT_NOT_SELECTED,
-    Status.FIREBASE_ERROR
+    Status.FIREBASE_ERROR,
+    Status.MISSING_PERMISSION
   })
   public @interface Status {
-    int NOT_BLOCKED = 0;
-    int BLOCKED_CATEGORY = 1;
-    int BLOCKED_ALL = 2;
-    int DISABLED_SYNC = 3;
-    int DISABLED_APP_SYNC = 4;
-    int FIREBASE_MISSING = 5;
-    int INTERNAL_ERROR = 6;
-    int ACCOUNT_NOT_SELECTED = 7;
-    int FIREBASE_ERROR = 8;
+    int
+      NOT_BLOCKED = 0,
+      BLOCKED_CATEGORY = 1,
+      BLOCKED_ALL = 2,
+      DISABLED_SYNC = 3,
+      DISABLED_APP_SYNC = 4,
+      FIREBASE_MISSING = 5,
+      INTERNAL_ERROR = 6,
+      ACCOUNT_NOT_SELECTED = 7,
+      FIREBASE_ERROR = 8,
+      MISSING_PERMISSION = 9;
   }
 
   public @Status
   int getNotificationBlockStatus () {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      if (ContextCompat.checkSelfPermission(UI.getAppContext(), android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        return Status.MISSING_PERMISSION;
+      }
+    }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
       long selfUserId = tdlib.myUserId();
       if (selfUserId != 0) {
         android.app.NotificationChannelGroup group = (android.app.NotificationChannelGroup) getSystemChannelGroup();
-
-        if (group != null && group.isBlocked()) {return Status.BLOCKED_CATEGORY;}
+        if (group != null && group.isBlocked()) {
+          return Status.BLOCKED_CATEGORY;
+        }
       }
     }
     if (!NotificationManagerCompat.from(UI.getAppContext()).areNotificationsEnabled()) {
@@ -1101,7 +1126,7 @@ public class TdlibNotificationManager implements UI.StateListener, Passcode.Lock
 
   private TdlibNotificationChannelGroup channelGroupCache;
 
-  public void createChannels () {
+  public void createChannels () throws TdlibNotificationChannelGroup.ChannelCreationFailureException {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       long accountUserId = tdlib.myUserId(true);
       if (accountUserId != 0) {
@@ -1110,7 +1135,7 @@ public class TdlibNotificationManager implements UI.StateListener, Passcode.Lock
     }
   }
 
-  public TdlibNotificationChannelGroup getChannelCache () {
+  public TdlibNotificationChannelGroup getChannelCache () throws TdlibNotificationChannelGroup.ChannelCreationFailureException {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       long accountUserId = tdlib.myUserId(true);
       TdApi.User account = myUser();
@@ -1127,7 +1152,7 @@ public class TdlibNotificationManager implements UI.StateListener, Passcode.Lock
     return null;
   }
 
-  public Object getSystemChannel (TdlibNotificationGroup group) {
+  public Object getSystemChannel (TdlibNotificationGroup group) throws TdlibNotificationChannelGroup.ChannelCreationFailureException {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       return getChannelCache().getChannel(group, false);
     }
@@ -1169,7 +1194,12 @@ public class TdlibNotificationManager implements UI.StateListener, Passcode.Lock
       settings.setChannelVersion(newVersion);
     }
     editor.apply();
-    TdlibNotificationChannelGroup.updateChannelSettings(tdlib, selfUserId, tdlib.account().isDebug(), getChannelsGlobalVersion(), scope, chatId, newVersion);
+    try {
+      TdlibNotificationChannelGroup.updateChannelSettings(tdlib, selfUserId, tdlib.account().isDebug(), getChannelsGlobalVersion(), scope, chatId, newVersion);
+    } catch (TdlibNotificationChannelGroup.ChannelCreationFailureException e) {
+      TDLib.Tag.notifications("Unable to increment notification channel version for chat %d:\n%s", chatId, Log.toString(e));
+      tdlib.settings().trackNotificationChannelProblem(e, chatId);
+    }
     onUpdateNotificationChannels(selfUserId);
     if (chatId != 0) {
       tdlib.listeners().updateNotificationChannel(chatId);
@@ -1984,6 +2014,12 @@ public class TdlibNotificationManager implements UI.StateListener, Passcode.Lock
   }
 
   @AnyThread
+  @TargetApi(Build.VERSION_CODES.TIRAMISU)
+  public void onNotificationPermissionGranted () {
+    rebuildNotification();
+  }
+
+  @AnyThread
   public void onUpdateNotificationChannels (long accountUserId) {
     if (Thread.currentThread() != queue) {
       sendLockedMessage(Message.obtain(queue.getHandler(), ON_UPDATE_NOTIFICATION_CHANNELS, BitwiseUtils.splitLongToFirstInt(accountUserId), BitwiseUtils.splitLongToSecondInt(accountUserId), this), null);
@@ -2063,7 +2099,7 @@ public class TdlibNotificationManager implements UI.StateListener, Passcode.Lock
     if (((c instanceof MessagesController && ((MessagesController) c).compareChat(sentMessage.chatId)) || (c instanceof MainController)) && !c.isPaused()) {
       switch (sentMessage.content.getConstructor()) {
         case TdApi.MessageScreenshotTaken.CONSTRUCTOR:
-        case TdApi.MessageChatSetTtl.CONSTRUCTOR: {
+        case TdApi.MessageChatSetMessageAutoDeleteTime.CONSTRUCTOR: {
           break;
         }
         default: {

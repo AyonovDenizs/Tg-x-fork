@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,9 +30,16 @@ import androidx.recyclerview.widget.RecyclerView;
 import org.drinkless.td.libcore.telegram.TdApi;
 import org.thunderdog.challegram.Log;
 import org.thunderdog.challegram.R;
+import org.thunderdog.challegram.component.MediaCollectorDelegate;
 import org.thunderdog.challegram.core.Lang;
 import org.thunderdog.challegram.data.InlineResult;
 import org.thunderdog.challegram.data.TD;
+import org.thunderdog.challegram.mediaview.MediaViewController;
+import org.thunderdog.challegram.mediaview.MediaViewDelegate;
+import org.thunderdog.challegram.mediaview.MediaViewThumbLocation;
+import org.thunderdog.challegram.mediaview.data.MediaItem;
+import org.thunderdog.challegram.mediaview.data.MediaStack;
+import org.thunderdog.challegram.navigation.HeaderView;
 import org.thunderdog.challegram.navigation.ViewController;
 import org.thunderdog.challegram.telegram.MessageListener;
 import org.thunderdog.challegram.telegram.TGLegacyManager;
@@ -68,7 +75,7 @@ import me.vkryl.td.ChatId;
 import me.vkryl.td.MessageId;
 import me.vkryl.td.Td;
 
-public abstract class SharedBaseController <T extends MessageSourceProvider> extends ViewController<SharedBaseController.Args> implements View.OnClickListener, View.OnLongClickListener, FactorAnimator.Target, MessageListener {
+public abstract class SharedBaseController <T extends MessageSourceProvider> extends ViewController<SharedBaseController.Args> implements View.OnClickListener, View.OnLongClickListener, FactorAnimator.Target, MessageListener, MediaCollectorDelegate, MediaViewDelegate {
   public static class Args {
     public long chatId, messageThreadId;
 
@@ -595,6 +602,22 @@ public abstract class SharedBaseController <T extends MessageSourceProvider> ext
           }
         }
         nextSearchOffset = messages.nextOffset;
+        modifyResultIfNeeded(items, true);
+        break;
+      }
+      case TdApi.FoundChatMessages.CONSTRUCTOR: {
+        TdApi.FoundChatMessages messages = (TdApi.FoundChatMessages) object;
+        nextOffset = messages.nextFromMessageId;
+        items = new ArrayList<>(messages.messages.length);
+        for (TdApi.Message message : messages.messages) {
+          if (message == null) {
+            continue;
+          }
+          T parsedItem = parseObject(message);
+          if (parsedItem != null) {
+            items.add(parsedItem);
+          }
+        }
         modifyResultIfNeeded(items, true);
         break;
       }
@@ -1256,7 +1279,7 @@ public abstract class SharedBaseController <T extends MessageSourceProvider> ext
     }
   }
 
-  private int indexOfMessage (long messageId) {
+  protected final int indexOfMessage (long messageId) {
     if (data == null || !supportsMessageContent()) {
       return -1;
     }
@@ -1467,7 +1490,6 @@ public abstract class SharedBaseController <T extends MessageSourceProvider> ext
 
   // Language
 
-
   @Override
   protected void handleLanguagePackEvent (int event, int arg1) {
     super.handleLanguagePackEvent(event, arg1);
@@ -1475,4 +1497,95 @@ public abstract class SharedBaseController <T extends MessageSourceProvider> ext
       adapter.onLanguagePackEvent(event, arg1);
     }
   }
+
+  // Media viewer
+
+  protected MediaItem toMediaItem (int index, T item, @Nullable TdApi.SearchMessagesFilter filter) {
+    return null;
+  }
+
+  @Override
+  public MediaStack collectMedias (long fromMessageId, @Nullable TdApi.SearchMessagesFilter filter) {
+    if (data == null || data.isEmpty()) {
+      return null;
+    }
+
+    ArrayList<MediaItem> items = null;
+
+    int foundIndex = -1;
+    int index = 0;
+    for (T item : data) {
+      MediaItem copy = toMediaItem(index, item, filter);
+      if (copy == null) {
+        continue;
+      }
+      if (items == null) {
+        items = new ArrayList<>();
+      }
+      if (foundIndex == -1 && copy.getSourceMessageId() == fromMessageId) {
+        foundIndex = index;
+      }
+      items.add(copy);
+      index++;
+    }
+
+    if (foundIndex == -1) {
+      return null;
+    }
+
+    MediaStack stack;
+
+    stack = new MediaStack(context, tdlib);
+    stack.set(foundIndex, items);
+
+    return stack;
+  }
+
+  @Override
+  public void modifyMediaArguments (Object cause, MediaViewController.Args args) {
+    args.delegate = this;
+  }
+
+  private final MediaViewThumbLocation location = new MediaViewThumbLocation();
+
+  protected boolean setThumbLocation (MediaViewThumbLocation location, View view, MediaItem mediaItem) {
+    return false;
+  }
+
+  @Override
+  public MediaViewThumbLocation getTargetLocation (int indexInStack, MediaItem item) {
+    int i = adapter.indexOfViewByLongId(item.getSourceMessageId());
+    if (i == -1) {
+      return null;
+    }
+    View view = recyclerView.getLayoutManager().findViewByPosition(i);
+    if (view != null) {
+      int viewTop = view.getTop();
+      int viewBottom = view.getBottom();
+      int top = viewTop + recyclerView.getTop() + HeaderView.getSize(true);
+      int bottom = top + view.getMeasuredHeight();
+      int left = view.getLeft();
+      int right = view.getRight();
+
+      if (alternateParent == null) {
+        viewTop -= SettingHolder.measureHeightForType(ListItem.TYPE_FAKE_PAGER_TOPVIEW);
+      }
+      int clipTop = viewTop < 0 ? -viewTop : 0;
+      int clipBottom = viewBottom < 0 ? -viewBottom : 0;
+
+      location.set(left, top, right, bottom);
+      location.setClip(0, clipTop, 0, clipBottom);
+
+      if (!setThumbLocation(location, view, item)) {
+        return null;
+      }
+
+      return location;
+    }
+
+    return null;
+  }
+
+  @Override
+  public void setMediaItemVisible (int index, MediaItem item, boolean isVisible) { }
 }

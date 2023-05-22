@@ -1,6 +1,6 @@
 /*
  * This file is a part of Telegram X
- * Copyright © 2014-2022 (tgx-android@pm.me)
+ * Copyright © 2014 (tgx-android@pm.me)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,6 @@ import android.os.Build;
 import android.os.OperationCanceledException;
 import android.os.SystemClock;
 import android.provider.MediaStore;
-import android.util.Size;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -519,12 +518,16 @@ public class ImageReader {
         }
       }
       if (!U.isValidBitmap(bitmap)) {
-        bitmap = MediaStore.Video.Thumbnails.getThumbnail(UI.getAppContext().getContentResolver(), imageId, MediaStore.Images.Thumbnails.MINI_KIND, opts);
+        try {
+          bitmap = MediaStore.Video.Thumbnails.getThumbnail(UI.getAppContext().getContentResolver(), imageId, MediaStore.Images.Thumbnails.MINI_KIND, opts);
+        } catch (Throwable t) {
+          t.printStackTrace();
+        }
       }
     } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageId);
       try {
-        bitmap = UI.getAppContext().getContentResolver().loadThumbnail(uri, new Size(512, 512), actor.getCancellationSignal());
+        bitmap = UI.getAppContext().getContentResolver().loadThumbnail(uri, new android.util.Size(512, 512), actor.getCancellationSignal());
       } catch (OperationCanceledException | IOException e) {
         bitmap = null;
       }
@@ -565,10 +568,16 @@ public class ImageReader {
         }
       }
     } else {
-      bitmap = MediaStore.Images.Thumbnails.getThumbnail(UI.getAppContext().getContentResolver(), imageId, MediaStore.Images.Thumbnails.MINI_KIND, opts);
+      try {
+        bitmap = MediaStore.Images.Thumbnails.getThumbnail(UI.getAppContext().getContentResolver(), imageId, MediaStore.Images.Thumbnails.MINI_KIND, opts);
+      } catch (Throwable t) {
+        t.printStackTrace();
+        bitmap = null;
+      }
     }
-    if (bitmap == null)
+    if (!U.isValidBitmap(bitmap) && !file.isVideo()) {
       bitmap = decodeFile(file.getFilePath(), opts);
+    }
 
     if (bitmap != null) {
       if (!file.isWebp() && file.shouldUseBlur() && file.needBlur()) {
