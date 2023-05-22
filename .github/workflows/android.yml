@@ -14,7 +14,8 @@ jobs:
       run: |
         sudo apt update
         sudo apt upgrade
-        sudo apt install openjdk-17
+        wget https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.deb
+        sudo dpkg -i jdk-17_linux-x64_bin.deb
         sudo apt install git git-lfs
         git clone --recursive --depth=1 --shallow-submodules https://github.com/TGX-Android/Telegram-X tgx
         cd tgx
